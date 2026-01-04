@@ -1899,9 +1899,9 @@ class ATSTailor {
       // Update step text
       updateProgress(35, '⚡Step 2/3: AI generating tailored documents... ~2s');
 
-      // Use Promise.race with timeout to prevent 30-min hangs (max 30s for tailor API)
+      // Use Promise.race with timeout to prevent hangs (max 90s for tailor API - includes OpenAI + PDF generation)
       const tailorTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Tailor API timeout (30s) - please retry')), 30000)
+        setTimeout(() => reject(new Error('Tailor API timeout (90s) - please retry')), 90000)
       );
       
       const tailorPromise = fetchWithRetry(`${SUPABASE_URL}/functions/v1/tailor-application`, {
