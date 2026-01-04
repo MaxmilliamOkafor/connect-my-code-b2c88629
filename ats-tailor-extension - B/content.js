@@ -756,7 +756,195 @@
     return { title, company, location, description, url: window.location.href, platform: platformKey || hostname };
   }
 
-  // ============ AUTO-TAILOR DOCUMENTS ============
+  // ============ ULTRA-FAST LOCAL KEYWORD EXTRACTION ============
+  function ultraFastExtractKeywords(jobDescription, maxKeywords = 35) {
+    if (!jobDescription || jobDescription.length < 50) {
+      return { all: [], highPriority: [], mediumPriority: [], lowPriority: [] };
+    }
+    
+    const stopWords = new Set([
+      'a','an','the','and','or','but','in','on','at','to','for','of','with','by','from',
+      'as','is','was','are','were','been','be','have','has','had','do','does','did',
+      'will','would','could','should','may','might','must','can','need','this','that',
+      'you','your','we','our','they','their','work','working','job','position','role',
+      'team','company','opportunity','looking','seeking','required','requirements',
+      'preferred','ability','able','experience','years','year','including','new',
+      'strong','excellent','highly','etc','also','via','across','ensure','join'
+    ]);
+    
+    const technicalPatterns = new Set([
+      'python','java','javascript','typescript','ruby','rails','react','node','nodejs',
+      'aws','azure','gcp','kubernetes','docker','terraform','postgresql','postgres',
+      'mysql','mongodb','redis','spark','airflow','kafka','snowflake','sql','graphql',
+      'machine learning','data science','ci/cd','agile','scrum','pytorch','tensorflow'
+    ]);
+    
+    const words = jobDescription.toLowerCase()
+      .replace(/[^a-z0-9\s\-\/\.#\+]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length >= 2 && !stopWords.has(w));
+    
+    const freq = new Map();
+    words.forEach(word => {
+      if (technicalPatterns.has(word) || word.length > 4) {
+        const boost = technicalPatterns.has(word) ? 5 : 1;
+        freq.set(word, (freq.get(word) || 0) + boost);
+      }
+    });
+    
+    const sorted = [...freq.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([word]) => word)
+      .slice(0, maxKeywords);
+    
+    const highCount = Math.min(15, Math.ceil(sorted.length * 0.45));
+    const medCount = Math.min(10, Math.ceil(sorted.length * 0.35));
+    
+    return {
+      all: sorted,
+      highPriority: sorted.slice(0, highCount),
+      mediumPriority: sorted.slice(highCount, highCount + medCount),
+      lowPriority: sorted.slice(highCount + medCount)
+    };
+  }
+  
+  // ============ FAST LOCAL CV BUILDER ============
+  function buildLocalCV(profile, keywords, jobInfo) {
+    const p = profile;
+    const sections = [];
+    
+    // Determine location (strip Remote)
+    const rawCity = String(p.city || '').split('|')[0].trim();
+    const rawCountry = String(p.country || '').trim();
+    const country = rawCountry && rawCountry.toLowerCase() === 'ireland' ? 'IE' : rawCountry;
+    const location = stripRemoteFromLocation(jobInfo.location) || 
+                     [rawCity, country].filter(Boolean).join(', ') || 
+                     defaultLocation;
+    
+    // Header
+    const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Applicant';
+    sections.push(name.toUpperCase());
+    sections.push([p.phone, p.email, location].filter(Boolean).join(' | '));
+    const links = [p.linkedin, p.github, p.portfolio].filter(Boolean);
+    if (links.length > 0) sections.push(links.join(' | '));
+    sections.push('');
+    
+    // Summary with keywords
+    if (p.ats_strategy) {
+      let summary = p.ats_strategy;
+      const topKw = (keywords.highPriority || []).slice(0, 5);
+      const summaryLower = summary.toLowerCase();
+      const missing = topKw.filter(kw => !summaryLower.includes(kw.toLowerCase()));
+      if (missing.length > 0) {
+        summary = summary.replace(/\.?\s*$/, '') + `. Expertise includes ${missing.join(', ')}.`;
+      }
+      sections.push('PROFESSIONAL SUMMARY');
+      sections.push(summary);
+      sections.push('');
+    }
+    
+    // Experience with keyword injection
+    if (p.work_experience?.length > 0) {
+      sections.push('WORK EXPERIENCE');
+      const allKw = keywords.all || [];
+      let kwIdx = 0;
+      
+      p.work_experience.forEach((exp, jobIdx) => {
+        const header = [
+          exp.company || exp.organization,
+          exp.title || exp.position || exp.role,
+          exp.dates || `${exp.startDate || ''} - ${exp.endDate || 'Present'}`,
+          exp.location
+        ].filter(Boolean).join(' | ');
+        sections.push(header);
+        sections.push('');
+        
+        let bullets = exp.bullets || exp.achievements || exp.responsibilities || [];
+        if (typeof bullets === 'string') bullets = bullets.split('\n');
+        
+        const phrases = ['leveraging', 'utilizing', 'implementing', 'applying', 'using'];
+        const getPhrase = () => phrases[Math.floor(Math.random() * phrases.length)];
+        
+        bullets.slice(0, 6).forEach((bullet, bulletIdx) => {
+          let b = bullet.replace(/^[-•*▪]\s*/, '').trim();
+          
+          // Inject 1-2 keywords per bullet (first 3 bullets only)
+          if (bulletIdx < 3 && kwIdx < allKw.length) {
+            const toInject = allKw.slice(kwIdx, kwIdx + 2).filter(kw => 
+              !b.toLowerCase().includes(kw.toLowerCase())
+            );
+            if (toInject.length > 0) {
+              const phrase = getPhrase();
+              b = b.replace(/\.?\s*$/, '') + `, ${phrase} ${toInject.join(' and ')}.`;
+              kwIdx += toInject.length;
+            }
+          }
+          
+          sections.push(`▪ ${b}`);
+        });
+        sections.push('');
+      });
+    }
+    
+    // Education
+    if (p.education?.length > 0) {
+      sections.push('EDUCATION');
+      p.education.forEach(edu => {
+        sections.push([
+          edu.institution || edu.school || edu.university,
+          edu.degree,
+          edu.dates || edu.graduationDate
+        ].filter(Boolean).join(' | '));
+      });
+      sections.push('');
+    }
+    
+    // Skills (merge with keywords)
+    const skills = new Set((p.skills || []).map(s => s.toLowerCase()));
+    (keywords.all || []).forEach(kw => skills.add(kw.toLowerCase()));
+    if (skills.size > 0) {
+      sections.push('SKILLS');
+      sections.push([...skills].slice(0, 25).join(', '));
+      sections.push('');
+    }
+    
+    // Certifications
+    if (p.certifications?.length > 0) {
+      sections.push('CERTIFICATIONS');
+      sections.push(p.certifications.map(c => typeof c === 'string' ? c : c.name).filter(Boolean).join(', '));
+    }
+    
+    return sections.join('\n');
+  }
+  
+  // ============ GENERATE QUICK COVER LETTER ============
+  function generateQuickCoverLetter(profile, job, keywords) {
+    const name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Applicant';
+    const topKw = (keywords.highPriority || keywords.all || []).slice(0, 5).join(', ');
+    const company = job.company || 'your company';
+    const title = job.title || 'this position';
+    
+    // Use stored cover letter template if available
+    if (profile.cover_letter) {
+      return profile.cover_letter
+        .replace(/\[Company\]/gi, company)
+        .replace(/\[Job Title\]/gi, title)
+        .replace(/\[Position\]/gi, title);
+    }
+    
+    return `Dear Hiring Manager,
+
+I am writing to express my strong interest in the ${title} at ${company}. With my background in ${topKw}, I am confident in my ability to contribute meaningfully to your team.
+
+Throughout my career, I have developed expertise that aligns well with this role's requirements. I am particularly drawn to this opportunity because of my passion for delivering impactful solutions and driving measurable results.
+
+I would welcome the opportunity to discuss how my skills and experience can benefit ${company}. Thank you for considering my application.
+
+Sincerely,
+${name}`;
+  }
+
+  // ============ AUTO-TAILOR DOCUMENTS - ULTRA-FAST LOCAL PIPELINE ============
   async function autoTailorDocuments() {
     if (hasTriggeredTailor || tailoringInProgress) {
       console.log('[ATS Tailor] Already triggered or in progress, skipping');
@@ -778,9 +966,10 @@
 
     hasTriggeredTailor = true;
     tailoringInProgress = true;
+    const pipelineStart = performance.now();
     
     createStatusBanner();
-    updateBanner('Generating tailored CV & Cover Letter...', 'working');
+    updateBanner('⚡ Ultra-fast tailoring...', 'working');
 
     try {
       // Get session
@@ -795,9 +984,25 @@
         return;
       }
 
-      // Get user profile with retry
-      updateBanner('Loading your profile...', 'working');
-      const profileRes = await fetchWithRetry(
+      // ============ STEP 1: EXTRACT JOB INFO + KEYWORDS LOCALLY (~10ms) ============
+      updateBannerStep(0);
+      const jobInfo = extractJobInfo();
+      if (!jobInfo.title) {
+        updateBanner('Could not detect job info, please use popup', 'error');
+        tailoringInProgress = false;
+        return;
+      }
+      
+      console.log('[ATS Tailor] Job detected:', jobInfo.title, 'at', jobInfo.company);
+      updateBanner(`⚡ Tailoring: ${jobInfo.title}...`, 'working');
+      
+      // FAST LOCAL keyword extraction (no API call)
+      const keywords = ultraFastExtractKeywords(jobInfo.description, 35);
+      console.log('[ATS Tailor] Keywords extracted locally:', keywords.all.length);
+      updateBannerStep(1);
+
+      // ============ STEP 2: LOAD PROFILE (~200ms) ============
+      const profileRes = await fetch(
         `${SUPABASE_URL}/rest/v1/profiles?user_id=eq.${session.user.id}&select=first_name,last_name,email,phone,linkedin,github,portfolio,cover_letter,work_experience,education,skills,certifications,achievements,ats_strategy,city,country,address,state,zip_code`,
         {
           headers: {
@@ -813,85 +1018,78 @@
 
       const profileRows = await profileRes.json();
       const p = profileRows?.[0] || {};
+      console.log('[ATS Tailor] Profile loaded');
 
-      // Extract job info from page
-      const jobInfo = extractJobInfo();
-      if (!jobInfo.title) {
-        updateBanner('Could not detect job info, please use popup', 'error');
-        tailoringInProgress = false;
-        return;
-      }
-
-      console.log('[ATS Tailor] Job detected:', jobInfo.title, 'at', jobInfo.company);
-      updateBanner(`Tailoring for: ${jobInfo.title}...`, 'working');
-
-      // Call tailor API with retry
-      const response = await fetchWithRetry(`${SUPABASE_URL}/functions/v1/tailor-application`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-          apikey: SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          jobTitle: jobInfo.title,
-          company: jobInfo.company,
-          location: jobInfo.location,
-          description: jobInfo.description,
-          requirements: [],
-          userProfile: {
-            firstName: p.first_name || '',
-            lastName: p.last_name || '',
-            email: p.email || session.user.email || '',
-            phone: p.phone || '',
-            linkedin: p.linkedin || '',
-            github: p.github || '',
-            portfolio: p.portfolio || '',
-            coverLetter: p.cover_letter || '',
-            workExperience: Array.isArray(p.work_experience) ? p.work_experience : [],
-            education: Array.isArray(p.education) ? p.education : [],
-            skills: Array.isArray(p.skills) ? p.skills : [],
-            certifications: Array.isArray(p.certifications) ? p.certifications : [],
-            achievements: Array.isArray(p.achievements) ? p.achievements : [],
-            atsStrategy: p.ats_strategy || '',
-            city: p.city || undefined,
-            country: p.country || undefined,
-            address: p.address || undefined,
-            state: p.state || undefined,
-            zipCode: p.zip_code || undefined,
-          },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || 'Tailoring failed');
-      }
-
-      const result = await response.json();
-      if (result.error) throw new Error(result.error);
-
-      console.log('[ATS Tailor] Tailoring complete! Match score:', result.matchScore);
-      updateBanner(`✅ Generated! Match: ${result.matchScore}% - Attaching files...`, 'success');
-
-      // Store PDFs in chrome.storage for the attach loop
-      const fallbackName = `${(p.first_name || '').trim()}_${(p.last_name || '').trim()}`.replace(/\s+/g, '_') || 'Applicant';
+      // ============ STEP 3: BUILD CV + COVER LETTER LOCALLY (~50ms) ============
+      updateBannerStep(1);
+      updateBanner('⚡ Generating documents...', 'working');
       
+      const tailoredCV = buildLocalCV(p, keywords, jobInfo);
+      const coverLetter = generateQuickCoverLetter(p, jobInfo, keywords);
+      
+      // Calculate match score
+      const cvLower = tailoredCV.toLowerCase();
+      const matched = keywords.all.filter(kw => cvLower.includes(kw.toLowerCase()));
+      const matchScore = keywords.all.length > 0 
+        ? Math.round((matched.length / keywords.all.length) * 100) 
+        : 100;
+      
+      console.log('[ATS Tailor] CV generated locally, match:', matchScore + '%');
+
+      // ============ STEP 4: GENERATE PDF LOCALLY ============
+      updateBanner('⚡ Creating PDF...', 'working');
+      
+      const fallbackName = `${(p.first_name || '').trim()}_${(p.last_name || '').trim()}`.replace(/\s+/g, '_') || 'Applicant';
+      const cvFileName = `${fallbackName}_CV.pdf`;
+      const coverFileName = `${fallbackName}_Cover_Letter.pdf`;
+      
+      let cvPdfBase64 = null;
+      let coverPdfBase64 = null;
+      
+      // Try to generate PDF using jsPDF if available
+      if (typeof jspdf !== 'undefined' || typeof jsPDF !== 'undefined') {
+        try {
+          const PDF = jspdf?.jsPDF || jsPDF;
+          
+          // CV PDF
+          const cvDoc = new PDF({ unit: 'pt', format: 'a4' });
+          cvDoc.setFont('helvetica', 'normal');
+          cvDoc.setFontSize(10.5);
+          const cvLines = cvDoc.splitTextToSize(tailoredCV, 480);
+          cvDoc.text(cvLines, 56, 56);
+          cvPdfBase64 = cvDoc.output('datauristring').split(',')[1];
+          
+          // Cover Letter PDF
+          const coverDoc = new PDF({ unit: 'pt', format: 'a4' });
+          coverDoc.setFont('helvetica', 'normal');
+          coverDoc.setFontSize(11);
+          const coverLines = coverDoc.splitTextToSize(coverLetter, 480);
+          coverDoc.text(coverLines, 56, 56);
+          coverPdfBase64 = coverDoc.output('datauristring').split(',')[1];
+          
+          console.log('[ATS Tailor] PDFs generated locally');
+        } catch (pdfErr) {
+          console.warn('[ATS Tailor] Local PDF generation failed:', pdfErr);
+        }
+      }
+
+      // Store in chrome.storage for the attach loop
       await new Promise(resolve => {
         chrome.storage.local.set({
-          cvPDF: result.resumePdf,
-          coverPDF: result.coverLetterPdf,
-          coverLetterText: result.tailoredCoverLetter || result.coverLetter || '',
-          cvFileName: result.cvFileName || `${fallbackName}_CV.pdf`,
-          coverFileName: result.coverLetterFileName || `${fallbackName}_Cover_Letter.pdf`,
+          cvPDF: cvPdfBase64,
+          coverPDF: coverPdfBase64,
+          coverLetterText: coverLetter,
+          cvFileName: cvFileName,
+          coverFileName: coverFileName,
           ats_lastGeneratedDocuments: {
-            cv: result.tailoredResume,
-            coverLetter: result.tailoredCoverLetter || result.coverLetter,
-            cvPdf: result.resumePdf,
-            coverPdf: result.coverLetterPdf,
-            cvFileName: result.cvFileName || `${fallbackName}_CV.pdf`,
-            coverFileName: result.coverLetterFileName || `${fallbackName}_Cover_Letter.pdf`,
-            matchScore: result.matchScore || 0,
+            cv: tailoredCV,
+            coverLetter: coverLetter,
+            cvPdf: cvPdfBase64,
+            coverPdf: coverPdfBase64,
+            cvFileName: cvFileName,
+            coverFileName: coverFileName,
+            matchScore: matchScore,
+            keywords: keywords
           }
         }, resolve);
       });
@@ -902,30 +1100,29 @@
         chrome.storage.local.set({ ats_tailored_urls: cached }, resolve);
       });
 
+      const pipelineTime = performance.now() - pipelineStart;
+      console.log(`[ATS Tailor] ⚡ ULTRA-FAST pipeline complete in ${pipelineTime.toFixed(0)}ms`);
+
       // Now load files and start attaching
+      updateBannerStep(2);
       loadFilesAndStart();
       
-      updateBanner(`✅ Done! Match: ${result.matchScore}% - Files attached!`, 'success');
-      hideBanner();
+      updateBanner(`✅ Done in ${Math.round(pipelineTime)}ms! ${matchScore}% match`, 'success');
 
     } catch (error) {
       console.error('[ATS Tailor] Auto-tailor error:', error);
       
-      // Provide user-friendly error messages
       let errorMsg = error.message || 'Unknown error';
       if (errorMsg.includes('Failed to fetch') || errorMsg.includes('NetworkError')) {
-        errorMsg = 'Network error - check your connection and try again';
-      } else if (errorMsg.includes('502') || errorMsg.includes('Bad Gateway')) {
-        errorMsg = 'Server busy - please try again in a moment';
+        errorMsg = 'Network error - check your connection';
       } else if (errorMsg.includes('401') || errorMsg.includes('Unauthorized')) {
-        errorMsg = 'Session expired - please login again via popup';
+        errorMsg = 'Session expired - please login again';
       } else if (errorMsg.includes('profile')) {
-        errorMsg = 'Profile not found - complete your profile in the app';
+        errorMsg = 'Complete your profile first';
       }
       
       updateBanner(`Error: ${errorMsg}`, 'error');
       
-      // Don't auto-hide error banner - let user see it
       setTimeout(() => {
         updateBanner('Click extension icon to retry', 'error');
       }, 5000);
