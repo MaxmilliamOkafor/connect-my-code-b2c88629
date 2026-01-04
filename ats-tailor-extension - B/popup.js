@@ -1745,15 +1745,14 @@ class ATSTailor {
   }
 
   /**
-   * OPTIMIZED: Full automatic tailoring pipeline
-   * IMPLEMENTATION FLOW:
-   * 1. Click "AI Extract Keywords" → Wait for full extraction
-   * 2. Grab 100% match keywords → Integrate naturally into Work Experience bullets
-   * 3. Verify 100% profile match in extension UI
-   * 4. Generate "Tailored_CV_[Job]_[Date].pdf" → Enable preview/download
-   * 5. Auto-attach PDF to application upload field
+   * ULTRA-FAST LOCAL TAILORING PIPELINE (50-500ms target)
+   * NO remote API calls for CV generation - 100% local processing
    * 
-   * UI updates at each stage for responsiveness
+   * FLOW:
+   * 1. FAST local keyword extraction (cached, ~10ms)
+   * 2. Load profile from Supabase (~200ms)
+   * 3. LOCAL CV tailoring + PDF generation (~100ms)
+   * 4. Auto-attach to form
    */
   async tailorDocuments(options = {}) {
     if (!this.currentJob) {
@@ -1774,8 +1773,8 @@ class ATSTailor {
     pipelineSteps?.classList.remove('hidden');
     this.setStatus('Tailoring...', 'working');
 
-    // ============ COUNTDOWN TIMER (estimate ~5-8s total) ============
-    let countdownSeconds = 8;
+    // ============ FAST COUNTDOWN (target 1-2s) ============
+    let countdownSeconds = 2;
     let countdownInterval = null;
     const startCountdown = (estimatedSeconds) => {
       countdownSeconds = estimatedSeconds;
@@ -1816,53 +1815,58 @@ class ATSTailor {
     };
 
     try {
-      // ============ STEP 1: AI EXTRACT KEYWORDS (~2s) ============
+      // ============ STEP 1: ULTRA-FAST LOCAL KEYWORD EXTRACTION (~10ms cached) ============
       updateStep(1, 'working');
-      updateProgress(5, '⚡Step 1/3: Extracting keywords... ~2s');
-      startCountdown(2);
+      updateProgress(10, '⚡Step 1/3: Extracting keywords... ~1s');
+      startCountdown(1);
 
       await this.refreshSessionIfNeeded();
       if (!this.session?.access_token || !this.session?.user?.id) {
         throw new Error('Please sign in again');
       }
 
-      // FIRST: Call AI Extract Keywords (equivalent to clicking the AI Extract button)
+      // FAST LOCAL extraction (no AI API call - uses TurboPipeline or local fallback)
       let keywords = null;
-      try {
-        keywords = await this.performAIKeywordExtraction();
-        console.log('[ATS Tailor] Step 1 - AI Extracted keywords:', keywords?.all?.length || 0);
-      } catch (aiError) {
-        console.warn('[ATS Tailor] AI extraction failed, falling back to local extraction:', aiError);
-        // Fallback to local extraction if AI fails
+      const kwStartTime = performance.now();
+      
+      // Try TurboPipeline first (fastest), then local fallback
+      if (window.TurboPipeline) {
+        keywords = await window.TurboPipeline.turboExtractKeywords(
+          this.currentJob.description || '',
+          { jobUrl: this.currentJob.url, maxKeywords: 35 }
+        );
+      } else {
         keywords = this.extractKeywordsOptimized(this.currentJob?.description || '');
       }
+      
+      const kwTime = performance.now() - kwStartTime;
+      console.log(`[ATS Tailor] Step 1 - Keywords extracted in ${kwTime.toFixed(0)}ms:`, keywords?.all?.length || 0);
       
       if (!keywords || !keywords.all || keywords.all.length === 0) {
         throw new Error('Could not extract keywords from job description');
       }
       
-      // Store keywords immediately for UI
+      // Store keywords for UI
       this.generatedDocuments.keywords = keywords;
-      
-      // UPDATE UI: Show extracted keywords immediately (before boost)
       this.generatedDocuments.matchedKeywords = [];
       this.generatedDocuments.missingKeywords = keywords.all;
       this.generatedDocuments.matchScore = 0;
       this.updateMatchAnalysisUI();
       
-      // Save keywords to history for comparison feature
-      await this.saveKeywordsToHistory(keywords);
-
       stopCountdown();
       updateStep(1, 'complete');
 
-      // ============ STEP 2: Load Profile & Generate Base CV (~3s) ============
+      // ============ STEP 2: LOAD PROFILE (~200ms) ============
       updateStep(2, 'working');
-      updateProgress(20, '⚡Step 2/3: Boosting CV to 95-100% match... ~3s');
-      startCountdown(3);
+      updateProgress(30, '⏳Step 2/3: Loading profile...');
+      startCountdown(1);
 
-      // Fetch user profile (API call with retry) - use shorter timeout
-      const profileRes = await fetchWithRetry(
+      // Fetch user profile with short timeout
+      const profileTimeout = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Profile load timeout')), 5000)
+      );
+      
+      const profilePromise = fetch(
         `${SUPABASE_URL}/rest/v1/profiles?user_id=eq.${this.session.user.id}&select=first_name,last_name,email,phone,linkedin,github,portfolio,cover_letter,work_experience,education,skills,certifications,achievements,ats_strategy,city,country,address,state,zip_code`,
         {
           headers: {
@@ -1871,16 +1875,17 @@ class ATSTailor {
           },
         }
       );
+      
+      const profileRes = await Promise.race([profilePromise, profileTimeout]);
 
       if (!profileRes.ok) {
-        throw new Error('Could not load profile. Open the QuantumHire app and complete your profile.');
+        throw new Error('Could not load profile. Complete your profile in QuantumHire first.');
       }
 
       const profileRows = await profileRes.json();
       const p = profileRows?.[0] || {};
 
-      // Apply user location rules for tailoring/output
-      // IMPORTANT: never include "Remote" in the candidate location line.
+      // Apply location rules
       const rawCity = String(p.city || '').split('|')[0].trim();
       const rawCountry = String(p.country || '').trim();
       const country = rawCountry && rawCountry.toLowerCase() === 'ireland' ? 'IE' : rawCountry;
@@ -1893,183 +1898,148 @@ class ATSTailor {
         ? window.ATSLocationTailor.normalizeJobLocationForApplication(this.currentJob.location || '', this._defaultLocation)
         : (this.currentJob.location || this._defaultLocation);
       this.currentJob.location = effectiveJobLocation;
-      
-      console.log('[ATS Tailor] Step 2 - Profile loaded, generating base CV...');
 
-      // Update step text
-      updateProgress(35, '⚡Step 2/3: AI generating tailored documents... ~2s');
-
-      // Use Promise.race with timeout to prevent hangs (max 90s for tailor API - includes OpenAI + PDF generation)
-      const tailorTimeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Tailor API timeout (90s) - please retry')), 90000)
-      );
-      
-      const tailorPromise = fetchWithRetry(`${SUPABASE_URL}/functions/v1/tailor-application`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.session.access_token}`,
-          apikey: SUPABASE_ANON_KEY,
-        },
-        body: JSON.stringify({
-          jobTitle: this.currentJob.title || '',
-          company: this.currentJob.company || '',
-          location: this.currentJob.location || '',
-          description: this.currentJob.description || '',
-          requirements: [],
-          userProfile: {
-            firstName: p.first_name || '',
-            lastName: p.last_name || '',
-            email: p.email || this.session.user.email || '',
-            phone: p.phone || '',
-            linkedin: p.linkedin || '',
-            github: p.github || '',
-            portfolio: p.portfolio || '',
-            coverLetter: p.cover_letter || '',
-            workExperience: Array.isArray(p.work_experience) ? p.work_experience : [],
-            education: Array.isArray(p.education) ? p.education : [],
-            skills: Array.isArray(p.skills) ? p.skills : [],
-            certifications: Array.isArray(p.certifications) ? p.certifications : [],
-            achievements: Array.isArray(p.achievements) ? p.achievements : [],
-            atsStrategy: p.ats_strategy || '',
-            city: this._defaultLocation,
-            country: p.country || undefined,
-            address: p.address || undefined,
-            state: p.state || undefined,
-            zipCode: p.zip_code || undefined,
-          },
-        }),
-      });
-      
-      const response = await Promise.race([tailorPromise, tailorTimeout]);
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        const isHtml = /^\s*</.test((errorText || '').trim());
-        const msg = response.status === 502
-          ? 'Service temporarily unavailable (502). Please retry in a few seconds.'
-          : (!isHtml && errorText ? errorText : `Server error (${response.status})`);
-        throw new Error(msg);
-      }
-
-      const result = await response.json();
-      if (result.error) throw new Error(result.error);
-      
-      stopCountdown();
-
-      // Save original CV (before local boosting) for coverage report diffing
-      this._coverageOriginalCV = result.tailoredResume || '';
-
-      // Filename format: {FirstName}_{LastName}_CV.pdf and {FirstName}_{LastName}_Cover_Letter.pdf
+      // Filename format
       const firstName = (p.first_name || '').trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '') || 'Applicant';
       const lastName = (p.last_name || '').trim().replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '') || '';
       const fileBaseName = lastName ? `${firstName}_${lastName}` : firstName;
       
       this.profileInfo = { firstName: p.first_name, lastName: p.last_name };
-
-      this.generatedDocuments = {
-        cv: result.tailoredResume,
-        coverLetter: result.tailoredCoverLetter || result.coverLetter,
-        cvPdf: result.resumePdf,
-        coverPdf: result.coverLetterPdf,
-        cvFileName: `${fileBaseName}_CV.pdf`,
-        coverFileName: `${fileBaseName}_Cover_Letter.pdf`,
-        matchScore: result.matchScore || 0,
-        matchedKeywords: result.keywordsMatched || result.matchedKeywords || [],
-        missingKeywords: result.keywordsMissing || result.missingKeywords || [],
-        keywords: keywords
-      };
-
-      // Calculate initial match score against extracted keywords
-      if (keywords.all?.length > 0 && this.generatedDocuments.cv) {
-        const initial = this.calculateMatchScore(this.generatedDocuments.cv, keywords);
-        this.generatedDocuments.matchedKeywords = initial.matchedKeywords;
-        this.generatedDocuments.missingKeywords = initial.missingKeywords;
-        this.generatedDocuments.matchScore = initial.matchScore;
-        
-        // UPDATE UI: Show initial match score
-        this.updateMatchAnalysisUI();
-      }
-
-      console.log('[ATS Tailor] Step 2 - Initial match score:', this.generatedDocuments.matchScore + '%');
+      
+      stopCountdown();
       updateStep(2, 'complete');
 
-      // ============ STEP 3: GUARANTEED 100% MATCH - No keywords left behind ============
-      // ============ STEP 3: FAST LOCAL BOOST (skip slow API calls) ~2s ============
+      // ============ STEP 3: LOCAL CV TAILORING + PDF (~100ms) ============
       updateStep(3, 'working');
-      updateProgress(55, '⚡Step 3/3: Generating ATS CV & Cover Letter... ~2s');
-      startCountdown(2);
-
-      const currentScore = this.generatedDocuments.matchScore || 0;
+      updateProgress(50, '⚡Step 3/3: Generating ATS CV... ~1s');
+      startCountdown(1);
       
-      // FAST LOCAL BOOST - no API calls, just local keyword injection
-      if (currentScore < 100 && keywords.all?.length > 0) {
-        try {
-          // Use fast local injection instead of slow API boost
-          const missingKw = this.generatedDocuments.missingKeywords || [];
-          if (missingKw.length > 0) {
-            const localBoost = this.fastKeywordInjection(
-              this.generatedDocuments.cv,
-              keywords,
-              missingKw
-            );
-            
-            if (localBoost.tailoredCV) {
-              this.generatedDocuments.cv = localBoost.tailoredCV;
-              const finalMatch = this.calculateMatchScore(localBoost.tailoredCV, keywords);
-              this.generatedDocuments.matchScore = finalMatch.matchScore;
-              this.generatedDocuments.matchedKeywords = finalMatch.matchedKeywords;
-              this.generatedDocuments.missingKeywords = finalMatch.missingKeywords;
-              
-              this.updateMatchAnalysisUI();
-              console.log('[ATS Tailor] Step 3 - Local boost complete:', finalMatch.matchScore + '%');
-            }
-          }
-        } catch (boostError) {
-          console.warn('[ATS Tailor] Local boost failed:', boostError);
-        }
-      } else if (currentScore >= 100) {
-        console.log('[ATS Tailor] Step 3 - Already at 100%');
-      }
-
-      // Build keyword coverage report for debugging
-      this.buildKeywordCoverageReport(keywords);
-
-      // FAST PDF: Only regenerate if we DON'T already have a PDF from the tailor API
-      // This skips the slow regeneratePDFAfterBoost() when unnecessary
-      if (!this.generatedDocuments.cvPdf && this.generatedDocuments.cv) {
-        updateProgress(75, '⚡Step 3/3: Generating PDF... ~1s');
+      const step3Start = performance.now();
+      
+      // Build base CV text from profile
+      let baseCV = '';
+      if (window.ResumeBuilder) {
+        const resumeResult = window.ResumeBuilder.buildResumeWithKeywords({
+          firstName: p.first_name,
+          lastName: p.last_name,
+          email: p.email || this.session?.user?.email,
+          phone: p.phone,
+          city: effectiveJobLocation,
+          linkedin: p.linkedin,
+          github: p.github,
+          portfolio: p.portfolio,
+          summary: p.ats_strategy,
+          workExperience: p.work_experience,
+          education: p.education,
+          skills: p.skills,
+          certifications: p.certifications,
+        }, keywords, { includeAllKeywords: true });
         
-        // Use timeout to prevent hanging
-        const pdfTimeout = new Promise((resolve) => 
-          setTimeout(() => resolve({ skipped: true }), 10000)
-        );
-        
-        try {
-          await Promise.race([this.regeneratePDFAfterBoost(), pdfTimeout]);
-        } catch (pdfError) {
-          console.warn('[ATS Tailor] PDF regeneration skipped/failed:', pdfError);
-          // Continue without new PDF - we still have the text content
-        }
+        baseCV = resumeResult?.textVersion || '';
       } else {
-        console.log('[ATS Tailor] Step 3 - Using existing PDF from tailor API');
+        // Fallback: construct basic CV text
+        baseCV = this.buildBasicCVText(p, keywords);
       }
+      
+      // LOCAL keyword injection for 100% match
+      const boostResult = this.fastKeywordInjection(baseCV, keywords, keywords.all);
+      const tailoredCV = boostResult.tailoredCV || baseCV;
+      
+      // Calculate match score
+      const matchResult = this.calculateMatchScore(tailoredCV, keywords);
+      
+      // Generate cover letter locally
+      let coverLetter = p.cover_letter || '';
+      if (coverLetter) {
+        // Inject job-specific info
+        coverLetter = coverLetter
+          .replace(/\[Company\]/gi, this.currentJob.company || 'your company')
+          .replace(/\[Job Title\]/gi, this.currentJob.title || 'this position')
+          .replace(/\[Position\]/gi, this.currentJob.title || 'this role');
+      } else {
+        coverLetter = this.generateQuickCoverLetter(p, this.currentJob, keywords);
+      }
+
+      this.generatedDocuments = {
+        cv: tailoredCV,
+        coverLetter: coverLetter,
+        cvPdf: null,
+        coverPdf: null,
+        cvFileName: `${fileBaseName}_CV.pdf`,
+        coverFileName: `${fileBaseName}_Cover_Letter.pdf`,
+        matchScore: matchResult.matchScore,
+        matchedKeywords: matchResult.matchedKeywords,
+        missingKeywords: matchResult.missingKeywords,
+        keywords: keywords
+      };
+      
+      this._coverageOriginalCV = baseCV;
+      
+      // UPDATE UI with match score
+      this.updateMatchAnalysisUI();
+      
+      // Generate PDF locally using OpenResumeGenerator
+      updateProgress(75, '⚡Step 3/3: Generating PDF...');
+      
+      if (window.OpenResumeGenerator) {
+        try {
+          const pdfPackage = await window.OpenResumeGenerator.generateATSPackage(
+            tailoredCV,
+            keywords,
+            {
+              title: this.currentJob.title,
+              company: this.currentJob.company,
+              location: effectiveJobLocation
+            },
+            {
+              firstName: p.first_name,
+              lastName: p.last_name,
+              email: p.email || this.session?.user?.email,
+              phone: p.phone,
+              linkedin: p.linkedin,
+              github: p.github,
+              portfolio: p.portfolio,
+              workExperience: p.work_experience,
+              education: p.education,
+              skills: p.skills,
+              certifications: p.certifications,
+              city: effectiveJobLocation
+            }
+          );
+          
+          if (pdfPackage.cvBase64) {
+            this.generatedDocuments.cvPdf = pdfPackage.cvBase64;
+            this.generatedDocuments.cvFileName = pdfPackage.cvFilename || `${fileBaseName}_CV.pdf`;
+          }
+          if (pdfPackage.coverBase64) {
+            this.generatedDocuments.coverPdf = pdfPackage.coverBase64;
+            this.generatedDocuments.coverFileName = pdfPackage.coverFilename || `${fileBaseName}_Cover_Letter.pdf`;
+          }
+          console.log('[ATS Tailor] Local PDF generated');
+        } catch (pdfErr) {
+          console.warn('[ATS Tailor] PDF generation failed, continuing with text:', pdfErr);
+        }
+      }
+      
+      const step3Time = performance.now() - step3Start;
+      console.log(`[ATS Tailor] Step 3 completed in ${step3Time.toFixed(0)}ms, score: ${matchResult.matchScore}%`);
+
+      // Build coverage report
+      this.buildKeywordCoverageReport(keywords);
 
       stopCountdown();
       updateStep(3, 'complete');
 
-      // ============ FINAL: Attach CV & Update UI ============
-      updateProgress(90, 'Attaching tailored CV to application...');
+      // ============ FINAL: Attach & Complete ============
+      updateProgress(90, 'Attaching tailored CV...');
 
-      // Auto-attach CV to the page
       try {
         await this.attachDocument('cv');
       } catch (attachError) {
         console.warn('[ATS Tailor] Auto-attach failed:', attachError);
-        // Don't throw - document generation was successful
       }
 
-      updateProgress(100, 'Complete! 100% keyword match achieved.');
+      updateProgress(100, 'Complete!');
 
       await chrome.storage.local.set({ ats_lastGeneratedDocuments: this.generatedDocuments });
 
@@ -2082,14 +2052,13 @@ class ATSTailor {
       await this.saveStats();
       this.updateUI();
 
-      // Show documents card and preview
       document.getElementById('documentsCard')?.classList.remove('hidden');
       this.updateDocumentDisplay();
       this.updatePreviewContent();
       
       const finalScore = this.generatedDocuments.matchScore;
       this.showToast(
-        `Done in ${elapsed.toFixed(1)}s! ${finalScore}% keyword match.`, 
+        `Done in ${elapsed.toFixed(1)}s! ${finalScore}% match.`, 
         'success'
       );
       this.setStatus('Complete', 'ready');
@@ -2099,7 +2068,7 @@ class ATSTailor {
       this.showToast(error.message || 'Failed', 'error');
       this.setStatus('Error', 'error');
     } finally {
-      stopCountdown(); // Always clean up countdown timer
+      stopCountdown();
       btn.disabled = false;
       btn.querySelector('.btn-text').textContent = 'Extract & Apply Keywords to CV';
       setTimeout(() => {
@@ -2114,6 +2083,85 @@ class ATSTailor {
         });
       }, 3000);
     }
+  }
+  
+  /**
+   * Build basic CV text from profile data (fallback when ResumeBuilder unavailable)
+   */
+  buildBasicCVText(profile, keywords) {
+    const p = profile;
+    const sections = [];
+    
+    // Header
+    const name = `${p.first_name || ''} ${p.last_name || ''}`.trim() || 'Applicant';
+    sections.push(name.toUpperCase());
+    sections.push([p.phone, p.email, this._defaultLocation].filter(Boolean).join(' | '));
+    sections.push([p.linkedin, p.github, p.portfolio].filter(Boolean).join(' | '));
+    sections.push('');
+    
+    // Summary
+    if (p.ats_strategy) {
+      sections.push('PROFESSIONAL SUMMARY');
+      sections.push(p.ats_strategy);
+      sections.push('');
+    }
+    
+    // Experience
+    if (p.work_experience?.length > 0) {
+      sections.push('WORK EXPERIENCE');
+      p.work_experience.forEach(exp => {
+        const header = [exp.company, exp.title, exp.dates || `${exp.startDate || ''} - ${exp.endDate || 'Present'}`].filter(Boolean).join(' | ');
+        sections.push(header);
+        if (exp.bullets) {
+          const bullets = Array.isArray(exp.bullets) ? exp.bullets : exp.bullets.split('\n');
+          bullets.forEach(b => sections.push(`▪ ${b.replace(/^[-•*▪]\s*/, '')}`));
+        }
+        sections.push('');
+      });
+    }
+    
+    // Education
+    if (p.education?.length > 0) {
+      sections.push('EDUCATION');
+      p.education.forEach(edu => {
+        sections.push([edu.institution, edu.degree, edu.dates].filter(Boolean).join(' | '));
+      });
+      sections.push('');
+    }
+    
+    // Skills
+    if (p.skills?.length > 0) {
+      sections.push('SKILLS');
+      sections.push(p.skills.join(', '));
+      sections.push('');
+    }
+    
+    // Certifications
+    if (p.certifications?.length > 0) {
+      sections.push('CERTIFICATIONS');
+      sections.push(p.certifications.map(c => typeof c === 'string' ? c : c.name).join(', '));
+    }
+    
+    return sections.join('\n');
+  }
+  
+  /**
+   * Generate a quick cover letter locally
+   */
+  generateQuickCoverLetter(profile, job, keywords) {
+    const name = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Applicant';
+    const topKw = (keywords.highPriority || keywords.all || []).slice(0, 5).join(', ');
+    
+    return `Dear Hiring Manager,
+
+I am writing to express my strong interest in the ${job.title || 'position'} at ${job.company || 'your company'}. With my background in ${topKw}, I am confident in my ability to contribute meaningfully to your team.
+
+Throughout my career, I have developed expertise that aligns well with this role's requirements. I am particularly drawn to this opportunity because of my passion for delivering impactful solutions and driving measurable results.
+
+I would welcome the opportunity to discuss how my skills and experience can benefit ${job.company || 'your organization'}. Thank you for considering my application.
+
+Sincerely,
+${name}`;
   }
 
   /**
