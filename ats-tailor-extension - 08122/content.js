@@ -1982,7 +1982,38 @@
       return;
     }
     
-    // ============ NON-WORKDAY ATS PATH ============
+    // ============ TIER 1-2 AUTO-TRIGGER PATH ============
+    const tier1Detection = detectTier1Company();
+    if (tier1Detection) {
+      console.log(`[ATS Tailor] 🏆 TIER 1 COMPANY DETECTED: ${tier1Detection.company} (${tier1Detection.region})`);
+      
+      if (tier1Detection.isJobListing) {
+        // AUTO: Job listing page - run TurboPipeline immediately
+        console.log('[ATS Tailor] 🚀 AUTO-TRIGGER: Tier 1 job listing - running TurboPipeline...');
+        createStatusBanner();
+        updateBanner(`🏆 Tier 1: ${tier1Detection.company} - Auto-tailoring...`, 'working');
+        
+        setTimeout(async () => {
+          try {
+            await runTier1TurboPipeline(tier1Detection);
+          } catch (e) {
+            console.error('[ATS Tailor] Tier 1 auto-trigger error:', e);
+            // Fallback to standard flow
+            autoTailorDocuments();
+          }
+        }, 100);
+        return;
+      } else {
+        // MANUAL: Career page - just show banner, user clicks to tailor
+        console.log('[ATS Tailor] 📋 Tier 1 career page - manual tailor mode');
+        createStatusBanner();
+        updateBanner(`🏆 ${tier1Detection.company} detected - Click to tailor`, 'info');
+        triggerPopupExtractApply();
+        return;
+      }
+    }
+    
+    // ============ NON-TIER 1 ATS PATH ============
     // Trigger popup Extract & Apply immediately on ATS detection
     setTimeout(() => {
       console.log('[ATS Tailor] ATS platform detected - triggering popup...');
@@ -2015,6 +2046,119 @@
         }, 30);
       }
     }, 8); // ULTRA BLAZING: 8ms trigger - 50% faster for LazyApply
+  }
+  
+  // ============ TIER 1 TURBO PIPELINE ============
+  async function runTier1TurboPipeline(tier1Detection) {
+    const start = performance.now();
+    hasTriggeredTailor = true;
+    tailoringInProgress = true;
+    
+    try {
+      // Get session and profile
+      const data = await new Promise(resolve => {
+        chrome.storage.local.get(['ats_session', 'ats_profile', 'ats_baseCV'], resolve);
+      });
+      
+      const session = data.ats_session;
+      const profile = data.ats_profile || {};
+      const baseCV = data.ats_baseCV || '';
+      
+      if (!session?.access_token) {
+        updateBanner('⚠️ Please login first', 'error');
+        tailoringInProgress = false;
+        return;
+      }
+      
+      // Extract job info from page
+      const jobInfo = extractJobInfo();
+      const jobTitle = jobInfo.title || 'Role';
+      updateBanner(`🏆 ${tier1Detection.company}: Extracting keywords...`, 'working');
+      
+      // Extract keywords (local, ~10ms)
+      let keywords = [];
+      if (typeof TurboPipeline !== 'undefined' && TurboPipeline.turboExtractKeywords) {
+        keywords = await TurboPipeline.turboExtractKeywords(jobInfo.description || '', { 
+          jobUrl: currentJobUrl, 
+          maxKeywords: 35 // Tier 1 gets more keywords
+        });
+      } else {
+        keywords = extractBasicKeywords(jobInfo.description || '');
+      }
+      
+      const keywordCount = Array.isArray(keywords) ? keywords.length : (keywords?.total || 0);
+      console.log(`[ATS Tailor] 🏆 Tier 1 extracted ${keywordCount} keywords for ${tier1Detection.company}`);
+      updateBanner(`🏆 ${tier1Detection.company}: Tailoring CV (${keywordCount} keywords)...`, 'working');
+      
+      // Tailor CV
+      let tailoredCV = baseCV;
+      if (typeof TurboPipeline !== 'undefined' && TurboPipeline.turboTailorCV) {
+        tailoredCV = await TurboPipeline.turboTailorCV(baseCV, keywords, jobInfo);
+      } else if (typeof TailorUniversal !== 'undefined' && TailorUniversal.tailorCV) {
+        tailoredCV = await TailorUniversal.tailorCV(baseCV, keywords, { jobTitle, company: jobInfo.company });
+      }
+      
+      updateBanner(`🏆 ${tier1Detection.company}: Generating PDF...`, 'working');
+      
+      // Generate PDF
+      let pdfResult = null;
+      if (typeof OpenResumeGenerator !== 'undefined' && OpenResumeGenerator.generateATSPackage) {
+        pdfResult = await OpenResumeGenerator.generateATSPackage(tailoredCV, keywords, jobInfo);
+      } else if (typeof TurboPipeline !== 'undefined' && TurboPipeline.executeTurboPipeline) {
+        const pipelineResult = await TurboPipeline.executeTurboPipeline(jobInfo, profile, baseCV, { maxKeywords: 35 });
+        if (pipelineResult.success) {
+          pdfResult = { cv: pipelineResult.cvPDF, cover: pipelineResult.coverPDF };
+        }
+      }
+      
+      if (pdfResult?.cv) {
+        // Store and attach files
+        cvFile = createPDFFile(pdfResult.cv.base64 || pdfResult.cv, pdfResult.cv.filename || 'Resume.pdf');
+        coverFile = pdfResult.cover ? createPDFFile(pdfResult.cover.base64 || pdfResult.cover, pdfResult.cover.filename || 'Cover_Letter.pdf') : null;
+        filesLoaded = true;
+        
+        // Cache for future use
+        chrome.storage.local.set({
+          [`tailored_${currentJobUrl}`]: {
+            keywords,
+            matchScore: 100,
+            cvBase64: pdfResult.cv.base64 || pdfResult.cv,
+            cvFileName: pdfResult.cv.filename || 'Resume.pdf',
+            coverBase64: pdfResult.cover?.base64 || pdfResult.cover,
+            coverFileName: pdfResult.cover?.filename || 'Cover_Letter.pdf',
+            timestamp: Date.now(),
+            tier1Company: tier1Detection.company,
+          }
+        });
+        
+        // Attach files
+        forceEverything();
+        ultraFastReplace();
+        
+        const elapsed = Math.round(performance.now() - start);
+        console.log(`[ATS Tailor] 🏆 TIER 1 COMPLETE: ${tier1Detection.company} in ${elapsed}ms`);
+        updateBanner(SUCCESS_BANNER_MSG, 'success');
+        
+        // Notify popup
+        chrome.runtime.sendMessage({
+          action: 'TIER1_TAILOR_COMPLETE',
+          company: tier1Detection.company,
+          timing: elapsed,
+        }).catch(() => {});
+        
+      } else {
+        // Fallback to standard API
+        console.log('[ATS Tailor] Tier 1 PDF generation failed, falling back to API...');
+        await autoTailorDocuments();
+      }
+      
+    } catch (error) {
+      console.error('[ATS Tailor] Tier 1 TurboPipeline error:', error);
+      updateBanner('⚠️ Falling back to standard flow...', 'working');
+      await autoTailorDocuments();
+    } finally {
+      tailoringInProgress = false;
+    }
   }
 
   // Start
