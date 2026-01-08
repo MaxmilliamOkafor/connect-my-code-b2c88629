@@ -52,19 +52,61 @@
   // Global success banner message (100% for ALL platforms)
   const SUCCESS_BANNER_MSG = '🚀 ATS TAILOR ✅ Done! Match: 100% - Files attached!';
   
+  // ============ TIER 1-2 COMPANY DOMAINS (Career Sites) ============
+  const TIER1_COMPANY_DOMAINS = [
+    // Dublin/Ireland Tier 1
+    'google.com', 'careers.google.com', 'meta.com', 'careers.meta.com', 'facebook.com',
+    'amazon.com', 'amazon.jobs', 'microsoft.com', 'careers.microsoft.com',
+    'apple.com', 'jobs.apple.com', 'salesforce.com', 'ibm.com', 'oracle.com',
+    'adobe.com', 'stripe.com', 'hubspot.com', 'careers.hubspot.com',
+    'intel.com', 'servicenow.com', 'workhuman.com', 'intercom.com', 'intercom.io',
+    'paypal.com', 'tiktok.com', 'careers.tiktok.com', 'bytedance.com',
+    'linkedin.com', 'careers.linkedin.com', 'dropbox.com', 'twilio.com',
+    'datadog.com', 'datadoghq.com', 'toast.com', 'toasttab.com',
+    'zendesk.com', 'docusign.com',
+    // UK Tier 1
+    'arm.com', 'deepmind.com', 'cisco.com', 'jpmorgan.com', 'jpmorganchase.com',
+    'gitlab.com', 'atlassian.com', 'snap.com', 'snapchat.com', 'capitalone.com',
+    'wasabi.com', 'wasabitech.com', 'samsara.com', 'blockchain.com',
+    'similarweb.com', 'cityfibre.com', 'luminance.com', 'checkout.com',
+    'revolut.com', 'wise.com', 'transferwise.com', 'monzo.com', 'starlingbank.com',
+    'darktrace.com', 'graphcore.com', 'benevolent.ai', 'thoughtmachine.net',
+    // USA Tier 1
+    'nvidia.com', 'broadcom.com', 'tesla.com', 'amd.com', 'qualcomm.com',
+    'netflix.com', 'jobs.netflix.com', 'uber.com', 'airbnb.com',
+    'palantir.com', 'crowdstrike.com', 'snowflake.com', 'workday.com',
+    'intuit.com', 'appliedmaterials.com', 'ti.com', 'micron.com',
+    'lamresearch.com', 'kla.com', 'synopsys.com', 'cadence.com',
+    'autodesk.com', 'ansys.com', 'unity.com', 'unity3d.com', 'roblox.com',
+    'block.xyz', 'squareup.com', 'doordash.com', 'instacart.com',
+    'rivian.com', 'chime.com'
+  ];
+
   const SUPPORTED_HOSTS = [
     'greenhouse.io', 'job-boards.greenhouse.io', 'boards.greenhouse.io',
     'workday.com', 'myworkdayjobs.com', 'smartrecruiters.com',
     'bullhornstaffing.com', 'bullhorn.com', 'teamtailor.com',
     'workable.com', 'apply.workable.com', 'icims.com',
-    'oracle.com', 'oraclecloud.com', 'taleo.net'
+    'oracle.com', 'oraclecloud.com', 'taleo.net', 'lever.co',
+    'jobvite.com', 'ashbyhq.com', 'recruiterbox.com', 'breezy.hr',
+    'recruitee.com', 'personio.de', 'personio.com', 'bamboohr.com',
+    'successfactors.com', 'ultipro.com', 'dayforce.com', 'adp.com'
   ];
 
-  const isSupportedHost = (hostname) =>
-    SUPPORTED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`));
+  const isSupportedHost = (hostname) => {
+    // Check ATS platforms
+    if (SUPPORTED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`))) {
+      return true;
+    }
+    // Check Tier 1-2 company career sites
+    if (TIER1_COMPANY_DOMAINS.some((d) => hostname === d || hostname.endsWith(`.${d}`) || hostname === `www.${d}` || hostname.includes(d.split('.')[0]))) {
+      return true;
+    }
+    return false;
+  };
 
   if (!isSupportedHost(window.location.hostname)) {
-    console.log('[ATS Tailor] Not a supported ATS host, skipping');
+    console.log('[ATS Tailor] Not a supported ATS/company host, skipping');
     return;
   }
 
