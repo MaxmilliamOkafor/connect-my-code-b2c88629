@@ -1,0 +1,106 @@
+{
+  "manifest_version": 3,
+  "name": "ATS Tailor v1.6.1 - WORKDAY TOP 1 + JD Snapshot",
+  "version": "1.6.1",
+  "description": "WORKDAY TOP 1 v1.6.1: JD Snapshot panel + Force Apply button. Snapshots JD on listing page before Apply, caches for full TurboPipeline on apply flow. 35 keywords, <200ms total. BOTH ATTACH. Fixed duplicate banner text. Location: Remote/USA → California.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://*.greenhouse.io/*",
+    "https://*.workday.com/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://*.smartrecruiters.com/*",
+    "https://*.bullhornstaffing.com/*",
+    "https://*.bullhorn.com/*",
+    "https://*.teamtailor.com/*",
+    "https://*.workable.com/*",
+    "https://*.icims.com/*",
+    "https://*.oracle.com/*",
+    "https://*.oraclecloud.com/*",
+    "https://*.taleo.net/*",
+    "https://wntpldomgjutwufphnpg.supabase.co/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.greenhouse.io/*",
+        "https://*.workday.com/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://*.smartrecruiters.com/*",
+        "https://*.bullhornstaffing.com/*",
+        "https://*.bullhorn.com/*",
+        "https://*.teamtailor.com/*",
+        "https://*.workable.com/*",
+        "https://*.icims.com/*",
+        "https://*.oracle.com/*",
+        "https://*.oraclecloud.com/*",
+        "https://*.taleo.net/*"
+      ],
+      "js": [
+        "mandatory-keywords.js",
+        "universal-jd-parser.js",
+        "reliable-extractor.js",
+        "universal-keyword-strategy.js",
+        "unique-cv-engine.js",
+        "tailor-universal.js",
+        "validation-engine.js",
+        "dynamic-score.js",
+        "turbo-pipeline.js",
+        "universal-location-strategy.js",
+        "pdf-ats-turbo.js",
+        "file-attacher-turbo.js",
+        "openresume-generator.js",
+        "resume-builder.js",
+        "content.js"
+      ],
+      "css": ["content.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*.png",
+        "content.css",
+        "bulk-apply.html",
+        "bulk-apply.css",
+        "bulk-apply.js",
+        "mandatory-keywords.js",
+        "universal-jd-parser.js",
+        "reliable-extractor.js",
+        "universal-keyword-strategy.js",
+        "unique-cv-engine.js",
+        "tailor-universal.js",
+        "validation-engine.js",
+        "dynamic-score.js",
+        "turbo-pipeline.js",
+        "universal-location-strategy.js",
+        "pdf-ats-turbo.js",
+        "file-attacher-turbo.js",
+        "openresume-generator.js",
+        "resume-builder.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
