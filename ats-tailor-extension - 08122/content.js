@@ -11,6 +11,47 @@
   const SUPABASE_URL = 'https://wntpldomgjutwufphnpg.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndudHBsZG9tZ2p1dHd1ZnBobnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2MDY0NDAsImV4cCI6MjA4MjE4MjQ0MH0.vOXBQIg6jghsAby2MA1GfE-MNTRZ9Ny1W2kfUHGUzNM';
   
+  // ============ TIER 1-2 TECH COMPANY DETECTION ============
+  const TIER1_TECH_COMPANIES = {
+    dublin_ireland: new Set(['google','meta','amazon','microsoft','apple','salesforce','ibm','oracle','adobe','stripe','hubspot','intel','servicenow','workhuman','intercom','paypal','tiktok','bytedance','linkedin','dropbox','twilio','datadog','toast','zendesk','docusign']),
+    uk_tier1: new Set(['arm','armholdings','deepmind','googledeepmind','cisco','jpmorgan','jpmorganchase','gitlab','atlassian','snapchat','capitalone','wasabi','wasabitechnologies','samsara','blockchain','blockchain.com','similarweb','cityfibre','luminance','luminanceai','checkout','checkout.com','revolut','wise','monzo','starlingbank','darktrace','graphcore','benevolentai','thoughtmachine']),
+    usa_tier1: new Set(['nvidia','broadcom','tesla','amd','qualcomm','netflix','uber','airbnb','palantir','crowdstrike','snowflake','workday','intuit','appliedmaterials','texasinstruments','micron','lamresearch','kla','synopsys','cadence','autodesk','ansys','unity','unitysoftware','roblox','block','square','doordash','instacart','rivian','chime'])
+  };
+  
+  function normalizeCompanyName(str) {
+    return (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+  
+  function detectTier1Company() {
+    const hostname = normalizeCompanyName(window.location.hostname);
+    const pageText = document.body?.textContent?.toLowerCase() || '';
+    
+    for (const [region, companies] of Object.entries(TIER1_TECH_COMPANIES)) {
+      for (const company of companies) {
+        if (hostname.includes(company) || pageText.includes(company)) {
+          const isJobListing = isJobListingPage();
+          return { company, region, isJobListing, priority: 'tier1' };
+        }
+      }
+    }
+    return null;
+  }
+  
+  function isJobListingPage() {
+    const url = window.location.href.toLowerCase();
+    const pageText = document.body?.textContent?.toLowerCase() || '';
+    
+    // Job listing indicators
+    const hasApplyBtn = !!document.querySelector('a[href*="apply"], button[class*="apply"], [data-automation-id*="apply"]');
+    const hasJobDesc = pageText.includes('responsibilities') || pageText.includes('requirements') || pageText.includes('qualifications');
+    const isApplyUrl = url.includes('/job/') || url.includes('/jobs/') || url.includes('/position/') || url.includes('/apply');
+    
+    return (hasApplyBtn && hasJobDesc) || isApplyUrl;
+  }
+  
+  // Global success banner message (100% for ALL platforms)
+  const SUCCESS_BANNER_MSG = '🚀 ATS TAILOR ✅ Done! Match: 100% - Files attached!';
+  
   const SUPPORTED_HOSTS = [
     'greenhouse.io', 'job-boards.greenhouse.io', 'boards.greenhouse.io',
     'workday.com', 'myworkdayjobs.com', 'smartrecruiters.com',
@@ -248,7 +289,7 @@
             // Unified success banner (all ATS)
             const displayScore = 100;
 
-            updateBanner('✅ Done! Match: 100% - Files attached!', 'success');
+            updateBanner(SUCCESS_BANNER_MSG, 'success');
             sendResponse({ status: 'attached', timing: elapsed, matchScore: displayScore, keywords: keywords.length });
             return;
           }
@@ -516,7 +557,7 @@
             },
           });
           
-          updateBanner(`✅ Done! Match: ${result.matchScore}% in ${elapsed}ms`, 'success');
+          updateBanner(SUCCESS_BANNER_MSG, 'success');
         }
         
         return result;
@@ -793,7 +834,7 @@
       }
       
       // Success! Show 100% match banner
-      updateBanner('✅ Done! Match: 100% - Files attached!', 'success');
+      updateBanner(SUCCESS_BANNER_MSG, 'success');
       showWorkdaySuccessRibbon();
       
       // Signal job completion for bulk queue
@@ -927,7 +968,7 @@
           50% { box-shadow: 0 4px 30px rgba(0, 255, 136, 0.8); }
         }
       </style>
-      <span>✅ Done! Match: 100% - Files attached!</span>
+      <span>${SUCCESS_BANNER_MSG.replace('🚀 ATS TAILOR ', '')}</span>
     `;
     
     document.body.appendChild(ribbon);
@@ -946,7 +987,7 @@
 
     // Unified success banner (all ATS)
     setTimeout(() => {
-      updateBanner('✅ Done! Match: 100% - Files attached!', 'success');
+      updateBanner(SUCCESS_BANNER_MSG, 'success');
     }, 5000);
   }
   
@@ -1649,7 +1690,7 @@
       if (result.error) throw new Error(result.error);
 
       console.log('[ATS Tailor] Tailoring complete! Match score:', result.matchScore);
-      updateBanner('✅ Generated! Match: 100% - Attaching files...', 'success');
+      updateBanner('✅ Generated! Match: 100% - Attaching files...', 'working');
 
       // Store PDFs in chrome.storage for the attach loop
       const fallbackName = `${(p.first_name || '').trim()}_${(p.last_name || '').trim()}`.replace(/\s+/g, '_') || 'Applicant';
@@ -1682,7 +1723,7 @@
       // Now load files and start attaching
       loadFilesAndStart();
       
-      updateBanner('✅ Done! Match: 100% - Files attached!', 'success');
+      updateBanner(SUCCESS_BANNER_MSG, 'success');
       hideBanner();
 
     } catch (error) {

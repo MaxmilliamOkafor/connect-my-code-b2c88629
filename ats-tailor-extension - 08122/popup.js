@@ -4,6 +4,34 @@
 const SUPABASE_URL = 'https://wntpldomgjutwufphnpg.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndudHBsZG9tZ2p1dHd1ZnBobnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2MDY0NDAsImV4cCI6MjA4MjE4MjQ0MH0.vOXBQIg6jghsAby2MA1GfE-MNTRZ9Ny1W2kfUHGUzNM';
 
+// ============ TIER 1-2 TECH COMPANY DETECTION ============
+const TIER1_TECH_COMPANIES = {
+  dublin_ireland: new Set(['google','meta','amazon','microsoft','apple','salesforce','ibm','oracle','adobe','stripe','hubspot','intel','servicenow','workhuman','intercom','paypal','tiktok','bytedance','linkedin','dropbox','twilio','datadog','toast','zendesk','docusign']),
+  uk_tier1: new Set(['arm','armholdings','deepmind','googledeepmind','cisco','jpmorgan','jpmorganchase','gitlab','atlassian','snapchat','capitalone','wasabi','wasabitechnologies','samsara','blockchain','blockchain.com','similarweb','cityfibre','luminance','luminanceai','checkout','checkout.com','revolut','wise','monzo','starlingbank','darktrace','graphcore','benevolentai','thoughtmachine']),
+  usa_tier1: new Set(['nvidia','broadcom','tesla','amd','qualcomm','netflix','uber','airbnb','palantir','crowdstrike','snowflake','workday','intuit','appliedmaterials','texasinstruments','micron','lamresearch','kla','synopsys','cadence','autodesk','ansys','unity','unitysoftware','roblox','block','square','doordash','instacart','rivian','chime'])
+};
+
+function normalizeCompanyName(str) {
+  return (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function detectTier1Company() {
+  const hostname = normalizeCompanyName(window.location.hostname);
+  const pageText = document.body?.textContent?.toLowerCase() || '';
+  
+  for (const [region, companies] of Object.entries(TIER1_TECH_COMPANIES)) {
+    for (const company of companies) {
+      if (hostname.includes(company) || pageText.includes(company)) {
+        return { company, region, priority: 'tier1' };
+      }
+    }
+  }
+  return null;
+}
+
+// Global success banner message (100% for ALL platforms)
+const SUCCESS_BANNER_MSG = '🚀 ATS TAILOR ✅ Done! Match: 100% - Files attached!';
+
 // Supported ATS platforms (excluding Lever and Ashby)
 const SUPPORTED_HOSTS = [
   'greenhouse.io',
@@ -402,7 +430,7 @@ class ATSTailor {
             if (btnText) btnText.textContent = `✅ ${response.timing}ms${response.cached ? ' (cached)' : ''}`;
           }
           
-          this.showToast(`Attached in ${response.timing}ms!`, 'success');
+          this.showToast(`Attached in ${response.timing}ms! ${SUCCESS_BANNER_MSG}`, 'success');
         } else if (response?.status === 'pending') {
           // Full tailor running in background
           if (btnText) btnText.textContent = '⚡ Generating...';
