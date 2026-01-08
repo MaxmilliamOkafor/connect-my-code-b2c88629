@@ -11,28 +11,90 @@
   const SUPABASE_URL = 'https://wntpldomgjutwufphnpg.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndudHBsZG9tZ2p1dHd1ZnBobnBnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2MDY0NDAsImV4cCI6MjA4MjE4MjQ0MH0.vOXBQIg6jghsAby2MA1GfE-MNTRZ9Ny1W2kfUHGUzNM';
   
-  // ============ TIER 1-2 TECH COMPANY DETECTION ============
-  const TIER1_TECH_COMPANIES = {
-    dublin_ireland: new Set(['google','meta','amazon','microsoft','apple','salesforce','ibm','oracle','adobe','stripe','hubspot','intel','servicenow','workhuman','intercom','paypal','tiktok','bytedance','linkedin','dropbox','twilio','datadog','toast','zendesk','docusign']),
-    uk_tier1: new Set(['arm','armholdings','deepmind','googledeepmind','cisco','jpmorgan','jpmorganchase','gitlab','atlassian','snapchat','capitalone','wasabi','wasabitechnologies','samsara','blockchain','blockchain.com','similarweb','cityfibre','luminance','luminanceai','checkout','checkout.com','revolut','wise','monzo','starlingbank','darktrace','graphcore','benevolentai','thoughtmachine']),
-    usa_tier1: new Set(['nvidia','broadcom','tesla','amd','qualcomm','netflix','uber','airbnb','palantir','crowdstrike','snowflake','workday','intuit','appliedmaterials','texasinstruments','micron','lamresearch','kla','synopsys','cadence','autodesk','ansys','unity','unitysoftware','roblox','block','square','doordash','instacart','rivian','chime'])
-  };
+  // ============ TIER 1-2 TECH COMPANY DOMAINS (Exact Matching) ============
+  const TIER1_COMPANY_DOMAINS = new Map([
+    // Dublin, Ireland
+    ['google.com', 'Google'], ['careers.google.com', 'Google'], ['metacareers.com', 'Meta'], 
+    ['amazon.jobs', 'Amazon'], ['microsoft.com', 'Microsoft'], ['jobs.apple.com', 'Apple'],
+    ['salesforce.com', 'Salesforce'], ['ibm.com', 'IBM'], ['oracle.com', 'Oracle'], 
+    ['adobe.com', 'Adobe'], ['stripe.com', 'Stripe'], ['hubspot.com', 'HubSpot'], 
+    ['jobs.intel.com', 'Intel'], ['jobs.servicenow.com', 'ServiceNow'], 
+    ['workhuman.com', 'Workhuman'], ['intercom.com', 'Intercom'], ['paypal.com', 'Paypal'],
+    ['jobs.tiktok.com', 'TikTok'], ['bytedance.com', 'ByteDance'], 
+    ['linkedin.com', 'LinkedIn'], ['jobs.dropbox.com', 'Dropbox'], 
+    ['twilio.com', 'Twilio'], ['careers.datadoghq.com', 'Datadog'], 
+    ['jobs.toasttab.com', 'Toast'], ['zendesk.com', 'Zendesk'], 
+    ['docusign.com', 'DocuSign'],
+    // UK Tier 1-2
+    ['arm.com', 'Arm Holdings'], ['deepmind.google', 'Google DeepMind'], 
+    ['jobs.cisco.com', 'Cisco'], ['jpmorgan.com', 'JP Morgan Chase'], 
+    ['about.gitlab.com', 'GitLab'], ['atlassian.com', 'Atlassian'], 
+    ['careers.snap.com', 'Snapchat'], ['careers.capitalone.com', 'Capital One'],
+    ['wasabi.com', 'Wasabi Technologies'], ['samsara.com', 'Samsara'], 
+    ['blockchain.com', 'Blockchain.com'], ['careers.similarweb.com', 'Similarweb'],
+    ['cityfibre.com', 'CityFibre'], ['luminance.com', 'Luminance AI'],
+    ['checkout.com', 'Checkout.com'], ['jobs.revolut.com', 'Revolut'], 
+    ['wise.jobs', 'Wise'], ['monzo.com', 'Monzo'], 
+    ['starlingbank.com', 'Starling Bank'], ['darktrace.com', 'Darktrace'],
+    ['graphcore.ai', 'Graphcore'], ['benevolent.com', 'BenevolentAI'],
+    ['thoughtmachine.net', 'Thought Machine'],
+    // USA Tier 1-2
+    ['nvidia.com', 'Nvidia'], ['broadcom.com', 'Broadcom'], ['tesla.com', 'Tesla'],
+    ['jobs.amd.com', 'AMD'], ['qualcomm.com', 'Qualcomm'], ['jobs.netflix.com', 'Netflix'],
+    ['uber.com', 'Uber'], ['careers.airbnb.com', 'Airbnb'], 
+    ['jobs.palantir.com', 'Palantir'], ['crowdstrike.com', 'CrowdStrike'],
+    ['jobs.snowflake.com', 'Snowflake'], ['workday.com', 'Workday'], 
+    ['intuit.com', 'Intuit'], ['appliedmaterials.jobs', 'Applied Materials'],
+    ['careers.ti.com', 'Texas Instruments'], ['micron.com', 'Micron'],
+    ['lamresearch.com', 'Lam Research'], ['kla.com', 'KLA'],
+    ['synopsys.com', 'Synopsys'], ['cadence.com', 'Cadence Design'],
+    ['autodesk.com', 'Autodesk'], ['ansys.com', 'ANSYS'],
+    ['unity.com', 'Unity Software'], ['jobs.roblox.com', 'Roblox'],
+    ['block.xyz', 'Block (Square)'], ['careers.sq.com', 'Square'],
+    ['doordash.com', 'DoorDash'], ['instacart.com', 'Instacart'],
+    ['rivian.com', 'Rivian'], ['chime.com', 'Chime']
+  ]);
   
-  function normalizeCompanyName(str) {
-    return (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Normalize domain - strips www. prefix
+  function normalizeDomain(url) {
+    try {
+      const domain = new URL(url).hostname.toLowerCase();
+      return domain.replace(/^www\./, '');
+    } catch {
+      return '';
+    }
+  }
+  
+  // Check if domain matches any Tier 1-2 company (supports partial matching)
+  function matchTier1Domain(hostname) {
+    const normalizedHost = hostname.replace(/^www\./, '').toLowerCase();
+    
+    // Direct match first
+    if (TIER1_COMPANY_DOMAINS.has(normalizedHost)) {
+      return { domain: normalizedHost, company: TIER1_COMPANY_DOMAINS.get(normalizedHost) };
+    }
+    
+    // Partial match - check if hostname ends with or contains key domain
+    for (const [domain, company] of TIER1_COMPANY_DOMAINS) {
+      const baseDomain = domain.split('.').slice(-2).join('.');
+      if (normalizedHost.includes(baseDomain.split('.')[0]) || normalizedHost.endsWith(baseDomain)) {
+        return { domain, company };
+      }
+    }
+    return null;
   }
   
   function detectTier1Company() {
-    const hostname = normalizeCompanyName(window.location.hostname);
-    const pageText = document.body?.textContent?.toLowerCase() || '';
+    const currentDomain = normalizeDomain(location.href);
+    const match = matchTier1Domain(currentDomain);
     
-    for (const [region, companies] of Object.entries(TIER1_TECH_COMPANIES)) {
-      for (const company of companies) {
-        if (hostname.includes(company) || pageText.includes(company)) {
-          const isJobListing = isJobListingPage();
-          return { company, region, isJobListing, priority: 'tier1' };
-        }
-      }
+    if (match) {
+      return {
+        company: match.company,
+        domain: match.domain,
+        isJobListing: isJobListingPage(),
+        priority: 'tier1'
+      };
     }
     return null;
   }
@@ -44,43 +106,13 @@
     // Job listing indicators
     const hasApplyBtn = !!document.querySelector('a[href*="apply"], button[class*="apply"], [data-automation-id*="apply"]');
     const hasJobDesc = pageText.includes('responsibilities') || pageText.includes('requirements') || pageText.includes('qualifications');
-    const isApplyUrl = url.includes('/job/') || url.includes('/jobs/') || url.includes('/position/') || url.includes('/apply');
+    const isApplyUrl = url.includes('/job/') || url.includes('/jobs/') || url.includes('/position/') || url.includes('/apply') || url.includes('/careers/');
     
     return (hasApplyBtn && hasJobDesc) || isApplyUrl;
   }
   
   // Global success banner message (100% for ALL platforms)
   const SUCCESS_BANNER_MSG = '🚀 ATS TAILOR ✅ Done! Match: 100% - Files attached!';
-  
-  // ============ TIER 1-2 COMPANY DOMAINS (Career Sites) ============
-  const TIER1_COMPANY_DOMAINS = [
-    // Dublin/Ireland Tier 1
-    'google.com', 'careers.google.com', 'meta.com', 'careers.meta.com', 'facebook.com',
-    'amazon.com', 'amazon.jobs', 'microsoft.com', 'careers.microsoft.com',
-    'apple.com', 'jobs.apple.com', 'salesforce.com', 'ibm.com', 'oracle.com',
-    'adobe.com', 'stripe.com', 'hubspot.com', 'careers.hubspot.com',
-    'intel.com', 'servicenow.com', 'workhuman.com', 'intercom.com', 'intercom.io',
-    'paypal.com', 'tiktok.com', 'careers.tiktok.com', 'bytedance.com',
-    'linkedin.com', 'careers.linkedin.com', 'dropbox.com', 'twilio.com',
-    'datadog.com', 'datadoghq.com', 'toast.com', 'toasttab.com',
-    'zendesk.com', 'docusign.com',
-    // UK Tier 1
-    'arm.com', 'deepmind.com', 'cisco.com', 'jpmorgan.com', 'jpmorganchase.com',
-    'gitlab.com', 'atlassian.com', 'snap.com', 'snapchat.com', 'capitalone.com',
-    'wasabi.com', 'wasabitech.com', 'samsara.com', 'blockchain.com',
-    'similarweb.com', 'cityfibre.com', 'luminance.com', 'checkout.com',
-    'revolut.com', 'wise.com', 'transferwise.com', 'monzo.com', 'starlingbank.com',
-    'darktrace.com', 'graphcore.com', 'benevolent.ai', 'thoughtmachine.net',
-    // USA Tier 1
-    'nvidia.com', 'broadcom.com', 'tesla.com', 'amd.com', 'qualcomm.com',
-    'netflix.com', 'jobs.netflix.com', 'uber.com', 'airbnb.com',
-    'palantir.com', 'crowdstrike.com', 'snowflake.com', 'workday.com',
-    'intuit.com', 'appliedmaterials.com', 'ti.com', 'micron.com',
-    'lamresearch.com', 'kla.com', 'synopsys.com', 'cadence.com',
-    'autodesk.com', 'ansys.com', 'unity.com', 'unity3d.com', 'roblox.com',
-    'block.xyz', 'squareup.com', 'doordash.com', 'instacart.com',
-    'rivian.com', 'chime.com'
-  ];
 
   const SUPPORTED_HOSTS = [
     'greenhouse.io', 'job-boards.greenhouse.io', 'boards.greenhouse.io',
@@ -94,12 +126,14 @@
   ];
 
   const isSupportedHost = (hostname) => {
+    const normalizedHost = hostname.replace(/^www\./, '').toLowerCase();
+    
     // Check ATS platforms
-    if (SUPPORTED_HOSTS.some((h) => hostname === h || hostname.endsWith(`.${h}`))) {
+    if (SUPPORTED_HOSTS.some((h) => normalizedHost === h || normalizedHost.endsWith(`.${h}`))) {
       return true;
     }
-    // Check Tier 1-2 company career sites
-    if (TIER1_COMPANY_DOMAINS.some((d) => hostname === d || hostname.endsWith(`.${d}`) || hostname === `www.${d}` || hostname.includes(d.split('.')[0]))) {
+    // Check Tier 1-2 company career sites (using Map-based matching)
+    if (matchTier1Domain(normalizedHost)) {
       return true;
     }
     return false;
