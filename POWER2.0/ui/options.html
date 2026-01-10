@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>POWER 2.0 Options</title>
+<style>
+body { font-family: -apple-system, sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; background: #0f0f23; color: #fff; }
+h1 { background: linear-gradient(90deg, #00d4ff, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+h2 { font-size: 16px; margin: 24px 0 12px; color: #00d4ff; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
+label { display: block; margin-bottom: 12px; }
+input, textarea { width: 100%; padding: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: #fff; font-size: 13px; margin-top: 4px; }
+input:focus, textarea:focus { outline: none; border-color: #7c3aed; }
+button { background: linear-gradient(135deg, #7c3aed, #00d4ff); color: #fff; padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; margin-top: 20px; }
+button:hover { opacity: 0.9; }
+.toggle { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; }
+.toggle input[type="checkbox"] { width: 18px; height: 18px; accent-color: #7c3aed; }
+.saved-responses { background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; margin-top: 12px; max-height: 200px; overflow-y: auto; }
+.response-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 11px; }
+.response-q { color: rgba(255,255,255,0.6); max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+.response-a { color: #00d4ff; }
+.clear-btn { background: rgba(239,68,68,0.2); color: #ef4444; padding: 6px 12px; font-size: 11px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>POWER 2.0 Settings</h1>
+
+<h2>👤 Profile</h2>
+<label>Full Name <input type="text" id="name"></label>
+<label>Email <input type="email" id="email"></label>
+<label>Phone <input type="tel" id="phone"></label>
+<label>Location <input type="text" id="location"></label>
+<label>LinkedIn URL <input type="url" id="linkedIn"></label>
+<label>GitHub URL <input type="url" id="github"></label>
+<label>Portfolio URL <input type="url" id="portfolio"></label>
+
+<h2>🏢 Workday Account</h2>
+<label>Email <input type="email" id="workdayEmail"></label>
+<label>Password <input type="password" id="workdayPassword"></label>
+
+<h2>⚙️ Automation Options</h2>
+<div class="toggle"><span>Auto-Click Next Page</span><input type="checkbox" id="autoNextPage"></div>
+<div class="toggle"><span>Auto-Submit Application</span><input type="checkbox" id="autoSubmit"></div>
+<div class="toggle"><span>Save Screening Responses</span><input type="checkbox" id="saveResponses" checked></div>
+<label>Daily Application Goal <input type="number" id="dailyGoal" value="10" min="1" max="100"></label>
+
+<h2>💾 Saved Responses</h2>
+<p style="font-size:11px;color:rgba(255,255,255,0.6);">These are answers you've given to screening questions that will be auto-filled on future applications.</p>
+<div class="saved-responses" id="savedResponsesList"></div>
+<button class="clear-btn" id="clearResponsesBtn">Clear All Responses</button>
+
+<button id="saveBtn">💾 Save Settings</button>
+
+<script>
+const fields = ['name', 'email', 'phone', 'location', 'linkedIn', 'github', 'portfolio'];
+
+chrome.storage.sync.get(['profile', 'workday_email', 'workday_password', 'options', 'savedResponses'], r => {
+  if (r.profile) fields.forEach(f => document.getElementById(f).value = r.profile[f] || '');
+  document.getElementById('workdayEmail').value = r.workday_email || '';
+  document.getElementById('workdayPassword').value = r.workday_password || '';
+  if (r.options) {
+    document.getElementById('autoNextPage').checked = r.options.autoClickNextPage || false;
+    document.getElementById('autoSubmit').checked = r.options.autoSubmit || false;
+    document.getElementById('saveResponses').checked = r.options.saveResponses !== false;
+    document.getElementById('dailyGoal').value = r.options.dailyGoal || 10;
+  }
+  renderSavedResponses(r.savedResponses || {});
+});
+
+function renderSavedResponses(responses) {
+  const list = document.getElementById('savedResponsesList');
+  const entries = Object.entries(responses);
+  if (entries.length === 0) {
+    list.innerHTML = '<p style="font-size:11px;color:rgba(255,255,255,0.4);">No saved responses yet.</p>';
+    return;
+  }
+  list.innerHTML = entries.slice(0, 50).map(([q, a]) => 
+    '<div class="response-item"><span class="response-q">' + q.substring(0, 50) + '</span><span class="response-a">' + a.substring(0, 30) + '</span></div>'
+  ).join('');
+}
+
+document.getElementById('saveBtn').onclick = () => {
+  const profile = {};
+  fields.forEach(f => profile[f] = document.getElementById(f).value);
+  
+  const options = {
+    autoClickNextPage: document.getElementById('autoNextPage').checked,
+    autoSubmit: document.getElementById('autoSubmit').checked,
+    saveResponses: document.getElementById('saveResponses').checked,
+    dailyGoal: parseInt(document.getElementById('dailyGoal').value) || 10
+  };
+  
+  chrome.storage.sync.set({
+    profile,
+    workday_email: document.getElementById('workdayEmail').value,
+    workday_password: document.getElementById('workdayPassword').value,
+    options
+  }, () => alert('✅ Settings saved!'));
+};
+
+document.getElementById('clearResponsesBtn').onclick = () => {
+  if (confirm('Clear all saved screening responses?')) {
+    chrome.storage.sync.set({ savedResponses: {} }, () => {
+      renderSavedResponses({});
+      alert('Cleared!');
+    });
+  }
+};
+</script>
+</body></html>
