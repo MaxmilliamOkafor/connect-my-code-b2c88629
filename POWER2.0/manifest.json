@@ -1,0 +1,86 @@
+{
+  "manifest_version": 3,
+  "name": "POWER2.0 - Ultimate Job Application Engine",
+  "version": "2.0.0",
+  "description": "POWER2.0: AI-powered CV tailoring + Universal autofill + Workday multi-page automation. 95%+ ATS match, 50+ platforms, instant application.",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "activeTab",
+    "scripting",
+    "tabs",
+    "alarms",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*/*"],
+      "js": [
+        "content/common/profile-store.js",
+        "content/common/field-detector.js",
+        "content/common/autofill-engine.js",
+        "content/ats/mandatory-keywords.js",
+        "content/ats/universal-jd-parser.js",
+        "content/ats/reliable-extractor.js",
+        "content/ats/universal-keyword-strategy.js",
+        "content/ats/unique-cv-engine.js",
+        "content/ats/tailor-universal.js",
+        "content/ats/validation-engine.js",
+        "content/ats/dynamic-score.js",
+        "content/ats/turbo-pipeline.js",
+        "content/ats/universal-location-strategy.js",
+        "content/ats/pdf-ats-turbo.js",
+        "content/ats/file-attacher-turbo.js",
+        "content/ats/openresume-generator.js",
+        "content/ats/resume-builder.js",
+        "content/workday/workday-detector.js",
+        "content/workday/workday-controller.js",
+        "content/workday/workday-pages.js",
+        "content/workday/workday-autofill.js",
+        "content/content-main.js"
+      ],
+      "css": ["content/content.css"],
+      "run_at": "document_end",
+      "all_frames": true
+    }
+  ],
+  "background": {
+    "service_worker": "background/background.js",
+    "type": "module"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*.png",
+        "content/*.css",
+        "bulk-apply/*.html",
+        "bulk-apply/*.css",
+        "bulk-apply/*.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
