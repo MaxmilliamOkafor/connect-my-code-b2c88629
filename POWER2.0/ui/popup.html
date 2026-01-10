@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POWER 2.0</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <img src="../icons/icon48.png" alt="POWER 2.0" class="logo-icon">
+        <div class="logo-text">
+          <h1>POWER 2.0</h1>
+          <span class="tagline">Tailor • Autofill • Apply</span>
+        </div>
+      </div>
+      <div class="status-indicator" id="statusIndicator">
+        <span class="status-dot"></span>
+        <span class="status-text">Ready</span>
+      </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="main">🎯 Apply</button>
+      <button class="tab" data-tab="bulk">📋 Bulk CSV</button>
+      <button class="tab" data-tab="workday">🏢 Workday</button>
+    </div>
+
+    <!-- Main Tab -->
+    <div class="tab-content active" id="tab-main">
+      <!-- Current Job Card -->
+      <div class="job-card" id="jobCard">
+        <div class="job-header">
+          <span class="job-label">Detected Job</span>
+          <button id="refreshJob" class="btn-icon" title="Refresh">🔄</button>
+        </div>
+        <h3 id="jobTitle" class="job-title">Scanning page...</h3>
+        <p id="jobCompany" class="job-company"></p>
+        <p id="jobLocation" class="job-location"></p>
+        <div class="job-badges">
+          <span id="atsBadge" class="badge badge-ats hidden"></span>
+          <span id="tier1Badge" class="badge badge-tier1 hidden"></span>
+        </div>
+      </div>
+
+      <!-- Main Actions -->
+      <div class="actions-section">
+        <button id="tailorOnlyBtn" class="btn btn-secondary">
+          <span class="btn-icon">📝</span>
+          <span class="btn-text">Tailor Only</span>
+        </button>
+        
+        <button id="autofillOnlyBtn" class="btn btn-secondary">
+          <span class="btn-icon">✏️</span>
+          <span class="btn-text">Autofill Only</span>
+        </button>
+        
+        <button id="fullApplyBtn" class="btn btn-primary btn-large">
+          <span class="btn-icon">🚀</span>
+          <span class="btn-text">Full Apply</span>
+          <span class="btn-desc">Tailor + Autofill + Attach</span>
+        </button>
+      </div>
+
+      <!-- Match Score -->
+      <div class="match-section hidden" id="matchSection">
+        <div class="match-gauge">
+          <div class="gauge-circle">
+            <svg viewBox="0 0 100 100" class="gauge-svg">
+              <circle class="gauge-bg" cx="50" cy="50" r="45"/>
+              <circle class="gauge-progress" id="matchCircle" cx="50" cy="50" r="45"/>
+            </svg>
+            <span class="gauge-value" id="matchPercent">0%</span>
+          </div>
+          <div class="gauge-info">
+            <span class="gauge-title">ATS Match</span>
+            <span class="gauge-keywords" id="keywordCount">0 keywords</span>
+          </div>
+        </div>
+        <div class="document-actions">
+          <button id="downloadCvBtn" class="btn btn-small">📄 Download CV</button>
+          <button id="attachBtn" class="btn btn-small btn-success">📎 Attach</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk CSV Tab -->
+    <div class="tab-content" id="tab-bulk">
+      <div class="bulk-section">
+        <h4 class="section-title">📋 Bulk CSV Automation</h4>
+        <p class="section-desc">Upload a CSV with job URLs to process multiple applications in sequence.</p>
+        
+        <div class="csv-upload">
+          <input type="file" id="csvFileInput" accept=".csv" class="hidden">
+          <button id="uploadCsvBtn" class="btn btn-secondary">
+            <span class="btn-icon">📁</span>
+            <span class="btn-text">Upload CSV</span>
+          </button>
+          <span id="csvFileName" class="csv-filename"></span>
+        </div>
+        
+        <div class="csv-preview hidden" id="csvPreview">
+          <div class="csv-stats">
+            <span id="csvJobCount">0 jobs</span>
+            <span id="csvStatus">Ready</span>
+          </div>
+          <div class="csv-list" id="csvJobList"></div>
+        </div>
+        
+        <div class="bulk-controls">
+          <button id="startBulkBtn" class="btn btn-primary" disabled>
+            <span class="btn-icon">▶️</span>
+            <span class="btn-text">Start Bulk Apply</span>
+          </button>
+          <div class="bulk-actions hidden" id="bulkActions">
+            <button id="pauseBulkBtn" class="btn btn-small">⏸️ Pause</button>
+            <button id="resumeBulkBtn" class="btn btn-small hidden">▶️ Resume</button>
+            <button id="stopBulkBtn" class="btn btn-small btn-danger">⏹️ Stop</button>
+          </div>
+        </div>
+        
+        <div class="bulk-progress hidden" id="bulkProgress">
+          <div class="progress-bar">
+            <div class="progress-fill" id="bulkProgressFill"></div>
+          </div>
+          <div class="progress-stats">
+            <span id="bulkCompleted">0</span> / <span id="bulkTotal">0</span> completed
+          </div>
+          <p class="progress-current" id="bulkCurrentJob">-</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Workday Tab -->
+    <div class="tab-content" id="tab-workday">
+      <div class="workday-section">
+        <h4 class="section-title">🏢 Workday Flow Control</h4>
+        
+        <button id="workdayFlowBtn" class="btn btn-workday btn-large">
+          <span class="btn-icon">▶️</span>
+          <span class="btn-text">Start Workday Flow</span>
+        </button>
+        
+        <div class="workday-status hidden" id="workdayStatus">
+          <div class="status-bar">
+            <span class="status-step" id="workdayStep">Step 1/6</span>
+            <span class="status-page" id="workdayPage">Contact Info</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="workdayProgressFill"></div>
+          </div>
+        </div>
+        
+        <div class="workday-options">
+          <label class="toggle-row">
+            <span class="toggle-label">Auto-Click Next Page</span>
+            <input type="checkbox" id="autoNextToggle">
+          </label>
+          <label class="toggle-row">
+            <span class="toggle-label">Auto-Submit Application</span>
+            <input type="checkbox" id="autoSubmitToggle">
+          </label>
+          <label class="toggle-row">
+            <span class="toggle-label">Save Screening Responses</span>
+            <input type="checkbox" id="saveResponsesToggle" checked>
+          </label>
+        </div>
+        
+        <div class="workday-credentials">
+          <h5>Workday Account</h5>
+          <input type="email" id="workdayEmail" placeholder="Email" class="input">
+          <input type="password" id="workdayPassword" placeholder="Password" class="input">
+          <button id="saveWorkdayCredsBtn" class="btn btn-small">💾 Save</button>
+        </div>
+        
+        <div class="workday-snapshot hidden" id="snapshotPanel">
+          <h5>📸 Job Snapshot</h5>
+          <p id="snapshotTitle">-</p>
+          <p id="snapshotCompany">-</p>
+          <span id="snapshotKeywords">0 keywords</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Footer -->
+    <div class="stats-footer">
+      <div class="stat">
+        <span class="stat-value" id="todayCount">0</span>
+        <span class="stat-label">Today</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="totalCount">0</span>
+        <span class="stat-label">Total</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="goalProgress">0%</span>
+        <span class="stat-label">Goal</span>
+      </div>
+    </div>
+
+    <!-- Footer Links -->
+    <div class="footer-links">
+      <button id="openOptionsBtn" class="link-btn">⚙️ Settings</button>
+      <button id="openSidePanelBtn" class="link-btn">📊 History</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

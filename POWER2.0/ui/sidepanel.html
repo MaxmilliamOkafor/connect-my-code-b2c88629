@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>POWER 2.0 History</title>
+<style>
+body { font-family: -apple-system, sans-serif; padding: 20px; background: #0f0f23; color: #fff; }
+h2 { font-size: 16px; margin-bottom: 16px; background: linear-gradient(90deg, #00d4ff, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.app-item { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+.app-title { font-weight: 600; font-size: 13px; }
+.app-company { font-size: 11px; color: rgba(255,255,255,0.6); }
+.app-meta { display: flex; justify-content: space-between; margin-top: 8px; font-size: 10px; }
+.app-score { color: #22c55e; }
+.app-date { color: rgba(255,255,255,0.4); }
+.empty { text-align: center; padding: 40px; color: rgba(255,255,255,0.4); }
+</style>
+</head>
+<body>
+<h2>📊 Application History</h2>
+<div id="historyList" class="empty">No applications yet. Start applying to see your history here.</div>
+
+<script>
+chrome.storage.local.get(['applicationHistory'], r => {
+  const history = r.applicationHistory || [];
+  if (history.length === 0) return;
+  
+  document.getElementById('historyList').innerHTML = history.slice(0, 50).map(app => `
+    <div class="app-item">
+      <div class="app-title">${app.title || 'Unknown Position'}</div>
+      <div class="app-company">${app.company || '-'} • ${app.location || '-'}</div>
+      <div class="app-meta">
+        <span class="app-score">${app.score || 0}% match</span>
+        <span class="app-date">${new Date(app.date).toLocaleDateString()}</span>
+      </div>
+    </div>
+  `).join('');
+});
+</script>
+</body></html>
