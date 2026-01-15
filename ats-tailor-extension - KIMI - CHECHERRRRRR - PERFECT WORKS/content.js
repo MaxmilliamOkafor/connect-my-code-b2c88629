@@ -127,17 +127,17 @@
     return (hasApplyBtn && hasJobDesc) || isApplyUrl;
   }
   
-  // Global success banner message (100% for ALL platforms) - FIXED: removed duplicate
-  const SUCCESS_BANNER_MSG = '🚀 ATS TAILOR ✅ Done! Match: 100% - Files attached!';
+  // Global success banner message (100% for ALL platforms) - FIXED: removed duplicate prefix
+  const SUCCESS_BANNER_MSG = '✅ Done! Match: 100% - Files attached!';
 
   const SUPPORTED_HOSTS = [
-    // Standard ATS platforms
+    // Standard ATS platforms (EXCLUDES Lever and Ashby per user preference)
     'greenhouse.io', 'job-boards.greenhouse.io', 'boards.greenhouse.io',
     'workday.com', 'myworkdayjobs.com', 'smartrecruiters.com',
     'bullhornstaffing.com', 'bullhorn.com', 'teamtailor.com',
     'workable.com', 'apply.workable.com', 'icims.com',
-    'oracle.com', 'oraclecloud.com', 'taleo.net', 'lever.co',
-    'jobvite.com', 'ashbyhq.com', 'recruiterbox.com', 'breezy.hr',
+    'oracle.com', 'oraclecloud.com', 'taleo.net',
+    'jobvite.com', 'recruiterbox.com', 'breezy.hr',
     'recruitee.com', 'personio.de', 'personio.com', 'bamboohr.com',
     'successfactors.com', 'ultipro.com', 'dayforce.com', 'adp.com',
     // Major company career sites (70+)
@@ -1138,7 +1138,7 @@
         #ats-auto-banner.success { background: linear-gradient(135deg, #00ff88 0%, #00cc66 100%); }
         #ats-auto-banner.error { background: linear-gradient(135deg, #ff4444 0%, #cc0000 100%); color: #fff; }
       </style>
-      <span>🚀 ATS TAILOR</span>
+      <span class="ats-prefix">🚀 ATS TAILOR</span>
       <span class="ats-status" id="ats-banner-status">Detecting upload fields...</span>
     `;
     document.body.appendChild(banner);
