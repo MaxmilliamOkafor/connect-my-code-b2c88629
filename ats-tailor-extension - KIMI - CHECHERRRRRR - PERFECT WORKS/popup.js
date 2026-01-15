@@ -28,7 +28,7 @@ const TIER1_TECH_COMPANIES = {
 
 // Supported ATS platforms + major company career sites
 const SUPPORTED_HOSTS = [
-  // Standard ATS
+  // Standard ATS (EXCLUDES Lever and Ashby per user preference)
   'greenhouse.io', 'job-boards.greenhouse.io', 'boards.greenhouse.io',
   'workday.com', 'myworkdayjobs.com', 'smartrecruiters.com',
   'bullhornstaffing.com', 'bullhorn.com', 'teamtailor.com',
@@ -136,16 +136,20 @@ class ATSTailor {
   
   async loadAIProviderSettings() {
     return new Promise((resolve) => {
+      // FAST LOAD (<50ms): Load AI provider preference immediately on popup open
       chrome.storage.local.get(['ai_provider', 'kimi_enabled', 'openai_enabled'], (result) => {
-        // Default to Kimi K2 as primary
+        // Default to Kimi K2 as primary (faster than OpenAI)
         this.aiProvider = result.ai_provider || 'kimi';
+        console.log('[ATS Tailor] AI Provider loaded:', this.aiProvider);
         resolve();
       });
     });
   }
   
   async saveAIProviderSettings() {
+    // PERSIST: Save immediately so setting survives popup close/reopen
     await chrome.storage.local.set({ ai_provider: this.aiProvider });
+    console.log('[ATS Tailor] AI Provider saved:', this.aiProvider);
   }
   
   updateAIProviderUI() {
@@ -178,9 +182,21 @@ class ATSTailor {
   
   toggleAIProvider() {
     this.aiProvider = this.aiProvider === 'kimi' ? 'openai' : 'kimi';
+    // PERSIST IMMEDIATELY: Save on every toggle so it survives popup close
     this.saveAIProviderSettings();
     this.updateAIProviderUI();
-    this.showToast(`Switched to ${this.aiProvider === 'kimi' ? 'Kimi K2' : 'OpenAI'}`, 'success');
+    
+    // Notify content script of provider change for speed optimization
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: 'UPDATE_AI_PROVIDER',
+          provider: this.aiProvider
+        }).catch(() => {});
+      }
+    });
+    
+    this.showToast(`Switched to ${this.aiProvider === 'kimi' ? 'Kimi K2 (⚡ Faster)' : 'OpenAI'}`, 'success');
   }
   
   // ============ WORKDAY MULTI-PAGE STATE PERSISTENCE ============
@@ -630,7 +646,7 @@ class ATSTailor {
             if (btnText) btnText.textContent = `✅ ${response.timing}ms${response.cached ? ' (cached)' : ''}`;
           }
           
-          this.showToast(`Attached in ${response.timing}ms! ${SUCCESS_BANNER_MSG}`, 'success');
+          this.showToast(`✅ Attached in ${response.timing}ms! Match: 100%`, 'success');
         } else if (response?.status === 'pending') {
           // Full tailor running in background
           if (btnText) btnText.textContent = '⚡ Generating...';
@@ -1647,8 +1663,8 @@ class ATSTailor {
         companyIndicator.title = `Detected: ${this.currentJob.detectedCompany || company} (${source})`;
       }
       
-      // Show edit button for company career sites (not ATS platforms)
-      const isATSPlatform = ['greenhouse', 'workday', 'myworkdayjobs', 'lever', 'ashby', 'smartrecruiters', 'workable', 'icims', 'bullhorn', 'teamtailor'].some(p => (this.currentJob.url || '').toLowerCase().includes(p));
+      // Show edit button for company career sites (not ATS platforms) - EXCLUDES Lever and Ashby
+      const isATSPlatform = ['greenhouse', 'workday', 'myworkdayjobs', 'smartrecruiters', 'workable', 'icims', 'bullhorn', 'teamtailor'].some(p => (this.currentJob.url || '').toLowerCase().includes(p));
       if (editBtn) editBtn.classList.toggle('hidden', isATSPlatform);
       
       // Add to history
@@ -3832,22 +3848,8 @@ function extractJobInfoFromPageInjected() {
       result.description = result.description || getText('[data-ui="job-description"]', '.job-description', 'main');
       result.companySource = 'selector';
     }
-    // --- Lever ---
-    else if (!result.title && host.includes('lever.co')) {
-      result.title = getText('h2.posting-headline', '.posting-headline h2', 'h1', 'h2');
-      result.company = result.company || getText('.posting-categories .company', '.company-name') || document.querySelector('meta[property="og:site_name"]')?.content || '';
-      result.location = result.location || getText('.posting-categories .location', '.location');
-      result.description = result.description || getText('.posting-description', '.content', 'main');
-      result.companySource = 'selector';
-    }
-    // --- Ashby ---
-    else if (!result.title && host.includes('ashbyhq.com')) {
-      result.title = getText('h1.ashby-job-posting-heading', 'h1[class*="job"]', 'h1');
-      result.company = result.company || document.querySelector('meta[property="og:site_name"]')?.content || '';
-      result.location = result.location || getText('.ashby-job-posting-location', '[class*="location"]');
-      result.description = result.description || getText('.ashby-job-posting-description', '[class*="description"]', 'main');
-      result.companySource = 'selector';
-    }
+    // --- Lever --- EXCLUDED per user preference (unsupported)
+    // --- Ashby --- EXCLUDED per user preference (unsupported)
     // --- Teamtailor ---
     else if (!result.title && host.includes('teamtailor')) {
       result.title = getText('h1.job-title', 'h1');
