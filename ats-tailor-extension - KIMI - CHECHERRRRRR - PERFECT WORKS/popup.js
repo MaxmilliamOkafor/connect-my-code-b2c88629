@@ -468,6 +468,30 @@ class ATSTailor {
     document.getElementById('captureSnapshotBtn')?.addEventListener('click', () => this.captureWorkdaySnapshot());
     document.getElementById('forceWorkdayApplyBtn')?.addEventListener('click', () => this.forceWorkdayApply());
     
+    // NEW: Automatic Autofill Toggle
+    document.getElementById('autofillEnabledToggle')?.addEventListener('change', (e) => {
+      const enabled = !!e.target?.checked;
+      chrome.storage.local.set({ autofill_enabled: enabled });
+      this.showToast(enabled ? '🤖 AI Autofill enabled' : 'AI Autofill disabled', 'success');
+      
+      // Notify content script
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]?.id) {
+          chrome.tabs.sendMessage(tabs[0].id, {
+            action: 'TOGGLE_AUTOFILL',
+            enabled: enabled
+          }).catch(() => {});
+        }
+      });
+    });
+    
+    // NEW: Manual Autofill Button
+    document.getElementById('manualAutofillBtn')?.addEventListener('click', () => this.runManualAutofill());
+    
+    // NEW: Saved Responses Panel
+    document.getElementById('viewSavedResponsesBtn')?.addEventListener('click', () => this.viewSavedResponses());
+    document.getElementById('clearSavedResponsesBtn')?.addEventListener('click', () => this.clearSavedResponses());
+    
     // Default location setting for Remote jobs
     document.getElementById('saveLocationBtn')?.addEventListener('click', () => this.saveDefaultLocation());
     document.getElementById('defaultLocationInput')?.addEventListener('keypress', (e) => {
@@ -477,6 +501,8 @@ class ATSTailor {
     // Load Workday settings and location settings
     this.loadWorkdaySettings();
     this.loadLocationSettings();
+    this.loadAutofillSettings();
+    this.loadSavedResponsesStats();
     
     // Check and show Workday snapshot panel if on Workday
     this.checkWorkdayAndShowSnapshot();
@@ -759,6 +785,127 @@ class ATSTailor {
     });
     
     this.showToast('Workday credentials saved!', 'success');
+  }
+  
+  // ============ AUTOFILL SETTINGS ============
+  async loadAutofillSettings() {
+    const result = await new Promise(resolve => {
+      chrome.storage.local.get(['autofill_enabled'], resolve);
+    });
+    
+    const toggle = document.getElementById('autofillEnabledToggle');
+    if (toggle) {
+      toggle.checked = result.autofill_enabled !== false; // Default to enabled
+    }
+  }
+  
+  async runManualAutofill() {
+    const btn = document.getElementById('manualAutofillBtn');
+    if (btn) {
+      btn.disabled = true;
+      btn.querySelector('.btn-text').textContent = 'Running...';
+    }
+    
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        this.showToast('No active tab found', 'error');
+        return;
+      }
+      
+      // Send manual autofill command to content script
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        action: 'RUN_MANUAL_AUTOFILL'
+      });
+      
+      if (response?.success) {
+        this.showToast(`✅ Autofill complete! Filled ${response.filledCount || 0} fields`, 'success');
+      } else {
+        this.showToast(response?.error || 'Autofill failed', 'error');
+      }
+    } catch (e) {
+      console.error('[Popup] Manual autofill error:', e);
+      this.showToast('Autofill failed - check console', 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.querySelector('.btn-text').textContent = 'Run Manual Autofill';
+      }
+    }
+  }
+  
+  // ============ SAVED RESPONSES MEMORY ============
+  async loadSavedResponsesStats() {
+    try {
+      const result = await new Promise(resolve => {
+        chrome.storage.local.get(['saved_responses'], resolve);
+      });
+      
+      const responses = result.saved_responses || {};
+      const count = Object.keys(responses).length;
+      
+      const statsEl = document.getElementById('savedResponsesStats');
+      if (statsEl) {
+        statsEl.innerHTML = `<span class="stat-badge">${count} saved responses</span>`;
+      }
+    } catch (e) {
+      console.log('[Popup] Error loading saved responses stats:', e);
+    }
+  }
+  
+  async viewSavedResponses() {
+    const listEl = document.getElementById('savedResponsesList');
+    if (!listEl) return;
+    
+    try {
+      const result = await new Promise(resolve => {
+        chrome.storage.local.get(['saved_responses'], resolve);
+      });
+      
+      const responses = result.saved_responses || {};
+      const entries = Object.entries(responses);
+      
+      if (entries.length === 0) {
+        listEl.innerHTML = '<p class="empty-state">No saved responses yet. Apply to jobs to build your response memory.</p>';
+        listEl.classList.remove('hidden');
+        return;
+      }
+      
+      // Sort by most recently used
+      entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+      
+      const html = entries.slice(0, 20).map(([question, data]) => `
+        <div class="saved-response-item">
+          <div class="response-question">${this.escapeHtml(question.substring(0, 80))}${question.length > 80 ? '...' : ''}</div>
+          <div class="response-answer">${this.escapeHtml((data.answer || '').substring(0, 50))}${(data.answer || '').length > 50 ? '...' : ''}</div>
+          <div class="response-meta">Used ${data.useCount || 1}x</div>
+        </div>
+      `).join('');
+      
+      listEl.innerHTML = html;
+      listEl.classList.toggle('hidden', false);
+    } catch (e) {
+      console.error('[Popup] Error viewing saved responses:', e);
+    }
+  }
+  
+  async clearSavedResponses() {
+    if (!confirm('Are you sure you want to clear all saved responses? This cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await chrome.storage.local.remove(['saved_responses']);
+      this.showToast('Saved responses cleared', 'success');
+      this.loadSavedResponsesStats();
+      
+      const listEl = document.getElementById('savedResponsesList');
+      if (listEl) {
+        listEl.innerHTML = '<p class="empty-state">No saved responses.</p>';
+      }
+    } catch (e) {
+      this.showToast('Failed to clear responses', 'error');
+    }
   }
   
   // Load default location settings
