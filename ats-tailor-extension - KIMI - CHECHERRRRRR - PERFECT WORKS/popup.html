@@ -518,9 +518,40 @@
               </label>
             </div>
             
+            <!-- NEW: Automatic Autofill Toggle -->
+            <div class="workday-auto-row">
+              <label class="toggle-row" for="autofillEnabledToggle">
+                <span class="toggle-label">🤖 Automatic Autofill (AI-Powered)</span>
+                <input type="checkbox" id="autofillEnabledToggle" checked />
+              </label>
+            </div>
+            <p class="setting-help">Uses Kimi K2 AI to intelligently answer screening questions that pass knockout filters.</p>
+            
+            <!-- Saved Responses Panel -->
+            <details class="saved-responses-section">
+              <summary>💾 Saved Responses Memory</summary>
+              <div class="saved-responses-content">
+                <p class="saved-responses-info">Remembered answers from previous applications. Used for instant autofill.</p>
+                <div class="saved-responses-stats" id="savedResponsesStats">
+                  <span class="stat-badge">0 saved responses</span>
+                </div>
+                <div class="saved-responses-actions">
+                  <button id="viewSavedResponsesBtn" class="btn btn-small btn-secondary">View All</button>
+                  <button id="clearSavedResponsesBtn" class="btn btn-small btn-outline btn-danger">Clear All</button>
+                </div>
+                <div class="saved-responses-list hidden" id="savedResponsesList"></div>
+              </div>
+            </details>
+            
             <button id="runWorkdayFlow" class="btn btn-primary btn-full">
               <span class="btn-icon">▶️</span>
               <span class="btn-text">Run Full Workday Flow</span>
+            </button>
+            
+            <!-- NEW: Manual Autofill Button -->
+            <button id="manualAutofillBtn" class="btn btn-accent btn-full" style="margin-top: 8px;">
+              <span class="btn-icon">🤖</span>
+              <span class="btn-text">Run Manual Autofill</span>
             </button>
           </div>
         </details>

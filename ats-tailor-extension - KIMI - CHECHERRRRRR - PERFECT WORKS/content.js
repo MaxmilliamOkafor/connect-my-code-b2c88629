@@ -235,6 +235,51 @@
       return true;
     }
     
+    // ============ TOGGLE AUTOFILL ============
+    if (message.action === 'TOGGLE_AUTOFILL') {
+      if (window.AutofillController) {
+        window.AutofillController.enabled = message.enabled;
+      }
+      sendResponse({ status: 'toggled', enabled: message.enabled });
+      return true;
+    }
+    
+    // ============ RUN MANUAL AUTOFILL ============
+    if (message.action === 'RUN_MANUAL_AUTOFILL') {
+      console.log('[ATS Tailor] Running manual autofill...');
+      (async () => {
+        try {
+          let filledCount = 0;
+          
+          if (window.WorkdayPages) {
+            const profile = await new Promise(r => chrome.storage.local.get(['ats_profile'], r)).then(r => r.ats_profile || {});
+            
+            // Detect page type and run appropriate handler
+            const body = document.body.textContent?.toLowerCase() || '';
+            if (body.includes('contact information') || document.querySelector('[data-automation-id="email"]')) {
+              await window.WorkdayPages.handleContactInfo(profile);
+              filledCount += 5;
+            } else if (body.includes('voluntary') || body.includes('disclosure')) {
+              await window.WorkdayPages.handleVoluntaryDisclosures(profile);
+              filledCount += 4;
+            } else if (body.includes('self-identification') || body.includes('eeo')) {
+              await window.WorkdayPages.handleSelfIdentification(profile);
+              filledCount += 4;
+            } else if (body.includes('application questions') || document.querySelectorAll('[data-automation-id*="question"]').length > 2) {
+              await window.WorkdayPages.handleApplicationQuestions();
+              filledCount += 8;
+            }
+          }
+          
+          sendResponse({ success: true, filledCount });
+        } catch (e) {
+          console.error('[ATS Tailor] Manual autofill error:', e);
+          sendResponse({ success: false, error: e.message });
+        }
+      })();
+      return true;
+    }
+    
     // ============ WORKDAY SNAPSHOT CAPTURE (for popup panel) ============
     if (message.action === 'CAPTURE_WORKDAY_SNAPSHOT') {
       console.log('[ATS Tailor] Capturing Workday JD snapshot...');
